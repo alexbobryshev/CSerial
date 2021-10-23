@@ -85,6 +85,9 @@ typedef int c_serial_errnum_t;
  */
 #define CSERIAL_RTS_TYPE_NOT_AVAILABLE -11
 
+/** Timeout occured */
+#define CSERIAL_ERROR_TIMEOUT -12
+
 /**
  * Serial line flags
  */
@@ -337,6 +340,11 @@ CSERIAL_EXPORT int c_serial_write_data( c_serial_port_t* port,
                                         void* data,
                                         int* length );
 
+CSERIAL_EXPORT int c_serial_write_data_timeout(c_serial_port_t* port,
+	void* data,
+	int* length,
+	int timeout_msec);
+
 /**
  * Read data from the serial port.
  * Acts like read() in POSIX systems, except that it will also return the 
@@ -361,6 +369,13 @@ CSERIAL_EXPORT int c_serial_read_data( c_serial_port_t* port,
                                        void* data,
                                        int* data_length,
                                        c_serial_control_lines_t* lines );
+
+CSERIAL_EXPORT int c_serial_read_data_timeout(
+	c_serial_port_t* port,
+	void* data,
+	int* data_length,
+	c_serial_control_lines_t* lines,
+	int timeout_msec);
 
 /**
  * Get the native handle(int or HANDLE) that is used by this serial port.

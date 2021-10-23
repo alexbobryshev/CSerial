@@ -84,6 +84,15 @@ typedef HANDLE c_serial_mutex_t;
 
 typedef pthread_mutex_t c_serial_mutex_t;
 
+static uint64_t unix_get_tick_count() {
+	tms tm;
+	clock_t time = times(&tm);
+	long res = sysconf(_SC_CLK_TCK);
+	uint64_t milliseconds64 = ((uint64_t)time) * 1000ULL;
+
+	return milliseconds64 / res;
+}
+
 #endif /* _WIN32 */
 
 #include <stdlib.h>
@@ -969,6 +978,408 @@ int c_serial_write_data( c_serial_port_t* port,
     return CSERIAL_OK;
 }
 
+
+int c_serial_write_data_timeout(c_serial_port_t* port,
+	void* data,
+	int* length,
+	int timeout_msec) {
+#ifdef _WIN32
+	DWORD bytes_written;
+	ULONGLONG start_timestamp = GetTickCount64();
+#else
+	int bytes_written;
+#endif
+
+	CHECK_INVALID_PORT(port);
+
+	SET_RTS_IF_REQUIRED(port);
+
+#ifdef _WIN32
+	if (!WriteFile(port->port, data, *length, NULL, &(port->overlap))) {
+		port->last_errnum = GetLastError();
+		if (GetLastError() == ERROR_IO_PENDING) {
+			DWORD wait_time = INFINITE;
+
+			if (timeout_msec >= 0) {
+				DWORD time_elapsed = (DWORD)(GetTickCount64() - start_timestamp);
+				if (time_elapsed >= (DWORD)timeout_msec)
+					return CSERIAL_ERROR_TIMEOUT;
+
+				wait_time = (DWORD)timeout_msec - time_elapsed;
+			}
+
+			/* Probably not an error, we're just doing this in an async fasion */
+			if (WaitForSingleObject(port->overlap.hEvent, wait_time) == WAIT_FAILED) {
+				port->last_errnum = GetLastError();
+				LOG_ERROR(LOGGER_NAME, "Unable to write data out: timeout");
+				return CSERIAL_ERROR_TIMEOUT;
+			}
+		}
+		else {
+			LOG_ERROR(LOGGER_NAME, "Unable to write data");
+			return CSERIAL_ERROR_GENERIC;
+		}
+	}
+
+	if (GetOverlappedResult(port->port, &(port->overlap), &bytes_written, 1) == 0) {
+		LOG_ERROR(LOGGER_NAME, "Unable to write data");
+		return CSERIAL_ERROR_GENERIC;
+	}
+#else
+	(void)timeout_msec;
+
+	bytes_written = write(port->port, data, *length);
+	if (bytes_written < 0) {
+		port->last_errnum = errno;
+		LOG_ERROR(LOGGER_NAME, "Unable to write data to serial port");
+		return CSERIAL_ERROR_GENERIC;
+	}
+#endif
+	*length = bytes_written;
+
+	CLEAR_RTS_IF_REQUIRED(port);
+
+	return CSERIAL_OK;
+}
+
+
+int c_serial_read_data_timeout(c_serial_port_t* port,
+	void* data,
+	int* data_length,
+	c_serial_control_lines_t* lines,
+	int timeout_msec) {
+
+	int ret_code = CSERIAL_OK;
+#ifdef _WIN32
+	DWORD ret = 0;
+	ULONGLONG start_timestamp = GetTickCount64();
+	int current_available = 0;
+	int bytesGot;
+	int originalControlState;
+	int gotData = 0;
+#else
+	fd_set fdset;
+	struct timeval timeout;
+	int originalControlState;
+	int selectStatus;
+	int newControlState;
+#endif
+
+	CHECK_INVALID_PORT(port);
+
+	if (data == NULL && lines == NULL) {
+		return CSERIAL_ERROR_INCORRECT_READ_PARAMS;
+	}
+
+#ifdef _WIN32
+	if (WaitForSingleObject(port->mutex, timeout_msec) == WAIT_FAILED)
+		return CSERIAL_ERROR_TIMEOUT;
+
+	if (GetCommModemStatus(port->port, &originalControlState) == 0) {
+		LOG_ERROR(LOGGER_NAME, "Unable to get comm modem lines");
+		return -1;
+	}
+	do {
+		{
+			DWORD comErrors = { 0 };
+			COMSTAT portStatus = { 0 };
+			if (!ClearCommError(port->port, &comErrors, &portStatus)) {
+				LOG_ERROR(LOGGER_NAME, "Unable to ClearCommError");
+				return -1;
+			}
+			else {
+				current_available = portStatus.cbInQue;
+			}
+		}
+
+		if (!current_available) {
+			/* If nothing is currently available, wait until we get an event of some kind.
+			 * This could be the serial lines changing state, or it could be some data
+			 * coming into the system.
+			 */
+			DWORD time_elapsed = (DWORD)(GetTickCount64() - start_timestamp);
+			DWORD wait_time = INFINITE;
+
+			if (timeout_msec >= 0) {
+				if (time_elapsed >= (DWORD)timeout_msec) {
+					ret_code = CSERIAL_ERROR_TIMEOUT;
+					break;
+				}
+
+				wait_time = (DWORD)timeout_msec - time_elapsed;
+			}
+
+			SetCommMask(port->port, EV_RXCHAR | EV_CTS | EV_DSR | EV_RING);
+			WaitCommEvent(port->port, &ret, &(port->overlap));
+			if (WaitForSingleObject(port->overlap.hEvent, wait_time) == WAIT_FAILED) {
+				ret_code = CSERIAL_ERROR_TIMEOUT;
+				break;
+			}
+		}
+		else {
+			/* Data is available; set the RXCHAR mask so we try to read from the port */
+			ret = EV_RXCHAR;
+		}
+
+		if (ret == 0 && !port->is_open) {
+			/* the port was closed */
+			ReleaseMutex(port->mutex);
+			return -1;
+		}
+
+		if (ret & EV_RXCHAR && data != NULL) {
+			if (!ReadFile(port->port, data, *data_length, &bytesGot, &(port->overlap))) {
+				LOG_ERROR(LOGGER_NAME, "Unable to read bytes from port");
+				ReleaseMutex(port->mutex);
+				*data_length = 0;
+				return CSERIAL_ERROR_GENERIC;
+			}
+			gotData = 1;
+			*data_length = bytesGot;
+			break;
+		}
+
+		/* Check to see if anything changed that we care about */
+		if ((ret & EV_CTS) &&
+			(port->line_flags & CSERIAL_LINE_FLAG_CTS)) {
+			break;
+		}
+
+		if ((ret & EV_DSR) &&
+			(port->line_flags & CSERIAL_LINE_FLAG_DSR)) {
+			break;
+		}
+
+		if ((ret & EV_RING) &&
+			(port->line_flags & CSERIAL_LINE_FLAG_RI)) {
+			break;
+		}
+
+	} while (1);
+
+	if (lines != NULL) {
+		int modemLines;
+
+		if (GetCommModemStatus(port->port, &modemLines) == 0) {
+			LOG_ERROR(LOGGER_NAME, "Unable to get comm modem lines");
+			return -1;
+		}
+
+		memset(lines, 0, sizeof(c_serial_control_lines_t));
+		if (modemLines & MS_CTS_ON) {
+			lines->cts = 1;
+		}
+
+		if (modemLines & MS_DSR_ON) {
+			lines->dsr = 1;
+		}
+
+		if (port->winDTR) {
+			lines->dtr = 1;
+		}
+
+		if (port->winRTS) {
+			lines->rts = 1;
+		}
+
+		if (modemLines & MS_RING_ON) {
+			lines->ri = 1;
+		}
+	}
+
+	if (!gotData) {
+		*data_length = 0;
+	}
+
+	ReleaseMutex(port->mutex);
+#else
+    uint64_t start_timestamp = unix_get_tick_count();
+
+	if (timeout_msec < 0) {
+		pthread_mutex_lock(&(port->mutex));
+	}
+	else {
+		struct timespec timeout_time;
+		clock_gettime(CLOCK_REALTIME, &timeout_time);
+		timeout_time.tv_sec += timeout_msec / 1000;
+		timeout_time.tv_nsec += (timeout_msec % 1000) * 1000;
+
+		if (pthread_mutex_timedlock(&lock, &timeout_time) != 0) {
+			return CSERIAL_ERROR_TIMEOUT;
+		}
+	}
+
+	/* first get the original state of the serial port lines */
+	if (ioctl(port->port, TIOCMGET, &originalControlState) < 0) {
+		port->last_errnum = errno;
+		LOG_ERROR(LOGGER_NAME, "IOCTL failed");
+		pthread_mutex_unlock(&(port->mutex));
+		return -1;
+	}
+
+	while (1) {
+		uint64_t time_elapsed = unix_get_tick_count() - start_timestamp;
+		if (timeout_msec >= 0 && time_elapsed >= (uint64_t)timeout_msec) {
+			ret_code = CSERIAL_ERROR_TIMEOUT;
+			break;
+		}
+
+		if (!port->is_open) {
+			pthread_mutex_unlock(&(port->mutex));
+			return -1;
+		}
+		FD_ZERO(&fdset);
+		FD_SET(port->port, &fdset);
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 10000; /* 10,000 microseconds = 10ms */
+
+		if (timeout_msec >= 0 && timeout_msec - time_elapsed < 10) {
+			timeout.tv_usec = ((uint64_t)timeout_msec - time_elapsed + 1) * 1000;
+		}
+
+		selectStatus = select(port->port + 1, &fdset, NULL, NULL, &timeout);
+		if (!port->is_open) {
+			/* check to see if the port is closed */
+			pthread_mutex_unlock(&(port->mutex));
+			return -1;
+		}
+
+		if (selectStatus < 0) {
+			if (errno != EBADF) {
+				port->last_errnum = errno;
+				LOG_ERROR(LOGGER_NAME, "Bad value from select");
+			}
+			pthread_mutex_unlock(&(port->mutex));
+			return -1;
+		}
+
+		if (selectStatus == 0) {
+			/* This was a timeout */
+			if (ioctl(port->port, TIOCMGET, &newControlState) < 0) {
+				port->last_errnum = errno;
+				LOG_ERROR(LOGGER_NAME, "IOCTL call failed");
+				pthread_mutex_unlock(&(port->mutex));
+				return -1;
+			}
+
+			if (newControlState == originalControlState) {
+				/* The state of the lines have not changed,
+				 * continue on until something changes
+							  */
+				continue;
+			}
+
+		}
+
+		if (FD_ISSET(port->port, &fdset) && data != NULL) {
+			break;
+		}
+
+		if (lines != NULL) {
+			/* Our line state has changed - check to see if we should ignore the
+			 * change or if this is a valid reason to stop trying to read
+			 */
+			int shouldContinue = 1;
+			int ctsChanged = (newControlState & TIOCM_CTS) != (originalControlState & TIOCM_CTS);
+			int cdChanged = (newControlState & TIOCM_CD) != (originalControlState & TIOCM_CD);
+			int dsrChanged = (newControlState & TIOCM_DSR) != (originalControlState & TIOCM_DSR);
+			int dtrChanged = (newControlState & TIOCM_DTR) != (originalControlState & TIOCM_DTR);
+			int rtsChanged = (newControlState & TIOCM_RTS) != (originalControlState & TIOCM_RTS);
+			int riChanged = (newControlState & TIOCM_RI) != (originalControlState & TIOCM_RI);
+
+			if ((port->line_flags & CSERIAL_LINE_FLAG_CTS) &&
+				ctsChanged) {
+				shouldContinue = 0;
+			}
+			if ((port->line_flags & CSERIAL_LINE_FLAG_CD) &&
+				cdChanged) {
+				shouldContinue = 0;
+			}
+			if ((port->line_flags & CSERIAL_LINE_FLAG_DSR) &&
+				dsrChanged) {
+				shouldContinue = 0;
+			}
+			if ((port->line_flags & CSERIAL_LINE_FLAG_DTR) &&
+				dtrChanged) {
+				shouldContinue = 0;
+			}
+			if ((port->line_flags & CSERIAL_LINE_FLAG_RTS) &&
+				rtsChanged) {
+				shouldContinue = 0;
+			}
+			if ((port->line_flags & CSERIAL_LINE_FLAG_RI) &&
+				riChanged) {
+				shouldContinue = 0;
+			}
+
+
+			if (shouldContinue) {
+				continue;
+			}
+
+			break;
+		}
+
+		/* We get to this point if we either 1. have data or
+		 * 2. our state has changed
+				 */
+		break;
+	}
+
+	if (FD_ISSET(port->port, &fdset) && data != NULL) {
+		int ret = read(port->port, data, *data_length);
+		if (ret < 0) {
+			port->last_errnum = errno;
+			LOG_ERROR(LOGGER_NAME, "Unable to read data");
+			return CSERIAL_ERROR_GENERIC;
+		}
+		*data_length = ret;
+	}
+	else {
+		*data_length = 0;
+	}
+
+	if (lines != NULL) {
+		memset(lines, 0, sizeof(struct c_serial_control_lines));
+		if (newControlState & TIOCM_CD) {
+			/* Carrier detect */
+			lines->cd = 1;
+		}
+
+		if (newControlState & TIOCM_CTS) {
+			/* CTS */
+			lines->cts = 1;
+		}
+
+		if (newControlState & TIOCM_DSR) {
+			/* Data Set Ready */
+			lines->dsr = 1;
+		}
+
+		if (newControlState & TIOCM_DTR) {
+			/* Data Terminal Ready */
+			lines->dtr = 1;
+		}
+
+		if (newControlState & TIOCM_RTS) {
+			/* Request To Send */
+			lines->rts = 1;
+		}
+
+		if (newControlState & TIOCM_RI) {
+			/* Ring Indicator */
+			lines->ri = 1;
+		}
+	}
+
+	pthread_mutex_unlock(&(port->mutex));
+#endif
+
+	return ret_code;
+}
+
+
+
 int c_serial_read_data( c_serial_port_t* port,
                         void* data,
                         int* data_length,
@@ -1036,7 +1447,7 @@ int c_serial_read_data( c_serial_port_t* port,
 
 		if( ret & EV_RXCHAR && data != NULL ){
 			if( !ReadFile( port->port, data, *data_length, &bytesGot, &(port->overlap) ) ){
-				LOG_ERROR( "Unable to read bytes from port", port );
+				LOG_ERROR(LOGGER_NAME, "Unable to read bytes from port");
 				ReleaseMutex( port->mutex );
 				*data_length = 0;
 				return CSERIAL_ERROR_GENERIC;
