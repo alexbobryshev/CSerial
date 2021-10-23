@@ -88,6 +88,9 @@ typedef int c_serial_errnum_t;
 /** Timeout occured */
 #define CSERIAL_ERROR_TIMEOUT -12
 
+/** Operation cancelled */
+#define CSERIAL_ERROR_CANCELLED -13
+
 /**
  * Serial line flags
  */
@@ -524,6 +527,9 @@ CSERIAL_EXPORT enum CSerial_RTS_Handling c_serial_get_rts_control(
  * Flush all data.
  */
 CSERIAL_EXPORT int c_serial_flush( c_serial_port_t* port );
+
+
+CSERIAL_EXPORT int c_serial_read_cancel(c_serial_port_t* port, int timeout_msec);
 
 #ifdef __cplusplus
 } /* end extern "C" */

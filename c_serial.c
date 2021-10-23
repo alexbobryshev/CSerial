@@ -21,11 +21,259 @@
 #include "simplelogger.h"
 
 /*
- * Platform-specific definitions
+ * Platform detect
  */
-#ifdef _WIN32
+#if defined(unix) || defined(__unix__) || defined(__unix)
+#define CSERIAL_PLATFORM_POSIX_BASED
 
+#if defined(__CYGWIN__) && !defined(_WIN32)
+#define CSERIAL_PLATFORM_CYGWIN
+#endif  /* defined(__CYGWIN__) && !defined(_WIN32)*/
+
+#if !defined(__linux__) && !defined(__linux) && !defined(linux) && !defined(__sun__) && \
+    !defined(__sun) && !defined(__CYGWIN__) && !defined(__APPLE__) && !defined(_WIN32)
+#define CSERIAL_PLATFORM_UNIX
+#include <sys/param.h>
+
+#if defined(BSD)
+#define CSERIAL_PLATFORM_BSD
+#endif  /* BSD*/
+
+#if defined(__FreeBSD__)
+#define CSERIAL_PLATFORM_FREEBSD
+#endif  /*__FreeBSD__*/
+
+#if defined(__NetBSD__)
+#define CSERIAL_PLATFORM_NETBSD
+#endif  /*__NetBSD__*/
+
+#if defined(__DragonFly__)
+#define CSERIAL_PLATFORM_DRAGONFLYBSD
+#endif  /*__DragonFly__*/
+
+#endif  /*! defined(__linux__) && !defined(__linux) && !defined(linux) &&
+ ! !defined(__sun__) && !defined(__sun) && !defined(__CYGWIN__) &&
+ ! !defined(__APPLE__) && !defined(_WIN32)*/
+
+#endif  /* defined(unix) || defined(__unix__) || defined(__unix) */
+
+#if !defined(CSERIAL_PLATFORM_UNIX) && defined(CSERIAL_PLATFORM_POSIX_BASED)
+#if defined(__linux__) || defined(__linux) || defined(__gnu_linux) || defined(linux)
+#define CSERIAL_PLATFORM_LINUX
+#endif  /* defined(__linux__) || defined(__linux) || defined(__gnu_linux) ||
+           defined(linux)*/
+#endif  /*! defined CSERIAL_PLATFORM_UNIX && defined(CSERIAL_PLATFORM_POSIX_BASED)*/
+
+
+#if defined(__APPLE__) && defined(__MACH__)
+#define CSERIAL_PLATFORM_POSIX_BASED
+#define CSERIAL_PLATFORM_MAC
+
+#include <TargetConditionals.h>
+#if TARGET_IPHONE_SIMULATOR == 1
+#define CSERIAL_PLATFORM_IPHONE
+#define CSERIAL_PLATFORM_IPHONE_SIMULATOR
+#elif TARGET_OS_IPHONE == 1
+#define CSERIAL_PLATFORM_IPHONE
+#elif TARGET_OS_MAC == 1
+#define CSERIAL_PLATFORM_MACOSX
+#endif /*TARGET_IPHONE_SIMULATOR == 1*/
+
+#endif  /* defined(__APPLE__) && defined(__MACH__) */
+
+#if defined(CSERIAL_PLATFORM_POSIX_BASED) && \
+    (defined(__sun__) || defined(__sun) || defined(__SunOS) || defined(sun))
+#define CSERIAL_PLATFORM_SOLARIS
+#endif  /* defined(CSERIAL_PLATFORM_POSIX_BASED) && (defined(__sun__) || defined(__sun) ||
+		    defined(__SunOS) || defined(sun)) */
+
+#ifdef _WIN32
+#undef CSERIAL_PLATFORM_POSIX_BASED  /* it may be set if you use CYGWIN with GCC for Windows */
+#undef CSERIAL_PLATFORM_UNIX
+#define CSERIAL_PLATFORM_WINDOWS
+#endif  /*_WIN32*/
+
+#ifdef __ANDROID__
+#define CSERIAL_PLATFORM_ANDROID
+#endif /*__ANDROID__*/
+
+
+
+/* 
+ * Compiler detect 
+ */
+
+#ifdef _MSC_VER
+#define CSERIAL_COMPILER_MSVC
+#endif  /*_MSC_VER*/
+
+#ifdef __GNUC__
+#define CSERIAL_COMPILER_GCC
+#endif  /*__GNUC__*/
+
+#ifdef __IBMCPP__
+#define CSERIAL_COMPILER_IBM
+#endif  /*__IBMCPP__*/
+
+#if defined(__ICC) || defined(__INTEL_COMPILER)
+#define CSERIAL_COMPILER_ICC
+#endif  /* defined(__ICC) || defined(__INTEL_COMPILER) */
+
+#if defined(__SUNPRO_CC) || defined(__SUNPRO_C)
+#define CSERIAL_COMPILER_SOLARIS
+#endif  /* defined(__SUNPRO_CC) || defined(__SUNPRO_C) */
+
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#define CSERIAL_COMPILER_MINGW
+#endif  /* defined(__MINGW32__) || defined(__MINGW64__) */
+
+#if defined(__clang__)
+#define CSERIAL_COMPILER_CLANG
+#endif /*__clang__*/
+
+#if defined(__xlc__)
+#define CSERIAL_COMPILER_XLC
+#endif /*__xlc__*/
+
+#if defined(CSERIAL_COMPILER_GCC) || defined(CSERIAL_COMPILER_CLANG) || defined(CSERIAL_COMPILER_XLC)
+#define CSERIAL_COMPILER_GCC_COMPAT
+#endif /*CSERIAL_COMPILER_GCC || CSERIAL_COMPILER_CLANG || CSERIAL_COMPILER_XLC*/
+
+
+/*
+ * Includes
+ */
+#ifdef CSERIAL_PLATFORM_WINDOWS
 #include <windows.h>
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
+
+#ifdef CSERIAL_PLATFORM_POSIX_BASED
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <stdint.h>
+#include <pthread.h>
+
+#ifdef CSERIAL_PLATFORM_ANDROID
+#include <sched.h>
+#endif /*CSERIAL_PLATFORM_ANDROID*/
+
+#include <sys/ioctl.h>
+#include <errno.h>
+#include <poll.h>
+
+#ifdef HAVE_LINUX_SERIAL
+#include <linux/serial.h>
+#endif /*HAVE_LINUX_SERIAL*/
+
+#endif /*CSERIAL_PLATFORM_POSIX_BASED*/
+
+/*
+ * Atomic implementation
+ */
+#define CSERIAL_ATOMIC_IMPL_GCC 1
+#define CSERIAL_ATOMIC_IMPL_WINDOWS 2
+#define CSERIAL_ATOMIC_IMPL_NOATOMIC 4
+
+/* User can override value LOG_ATOMIC_IMPL by himself */
+#if !defined(CSERIAL_ATOMIC_IMPL)
+#if defined (CSERIAL_COMPILER_GCC_COMPAT)
+#define CSERIAL_ATOMIC_IMPL CSERIAL_ATOMIC_IMPL_GCC
+#elif defined(CSERIAL_PLATFORM_WINDOWS)
+#define CSERIAL_ATOMIC_IMPL CSERIAL_ATOMIC_IMPL_WINDOWS
+#else
+#define CSERIAL_ATOMIC_IMPL CSERIAL_ATOMIC_IMPL_NOATOMIC
+#endif
+
+#endif /*!defined(CSERIAL_ATOMIC_IMPL)*/
+
+#if CSERIAL_ATOMIC_IMPL==LOG_ATOMIC_IMPL_WINDOWS
+long _InterlockedIncrement(long volatile*);
+long _InterlockedDecrement(long volatile*);
+long __cdecl _InterlockedExchange(long volatile*, long);
+long __cdecl _InterlockedCompareExchange(long volatile*, long, long);
+
+#pragma intrinsic(_InterlockedIncrement)
+#pragma intrinsic(_InterlockedDecrement)
+#pragma intrinsic(_InterlockedCompareExchange)
+#endif  /*end of LOG_ATOMIC_IMPL==LOG_ATOMIC_IMPL_WINDOWS*/
+
+typedef volatile long atomic_long_type;
+
+#if CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_GCC
+/* GCC implementation*/
+static long atomic_increment(long volatile* variable) {
+	return __atomic_add_fetch(variable, 1, __ATOMIC_SEQ_CST);
+}
+
+static long atomic_decrement(long volatile* variable) {
+	return __atomic_sub_fetch(variable, 1, __ATOMIC_SEQ_CST);
+}
+
+static long atomic_exchange(long volatile* variable, long new_val) {
+	return __atomic_exchange_n(variable, new_val, __ATOMIC_SEQ_CST);
+}
+
+static bool atomic_compare_exchange(long volatile* variable, long new_val, long expected_val) {
+	return __atomic_compare_exchange_n(variable, &expected_val, new_val, true, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+}
+
+#elif CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_WINDOWS
+/* Windows implementation */
+static long atomic_increment(long volatile* variable) {
+	return _InterlockedIncrement(variable);
+}
+
+static long atomic_decrement(long volatile* variable) {
+	return _InterlockedDecrement(variable);
+}
+
+static long atomic_exchange(long volatile* variable, long new_val) {
+	return _InterlockedExchange(variable, new_val);
+}
+
+static int atomic_compare_exchange(long volatile* variable, long new_val, long expected_val) {
+	long old_val = _InterlockedCompareExchange(variable, new_val, expected_val);
+	return old_val == expected_val;
+}
+#elif CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_NOATOMIC
+
+/* NO ATOMIC SUPPORT, JUST EMULATE OPERATIONS */
+#pragma warning("Atomic operations are not supported!")
+
+static long atomic_increment(long volatile* variable) {
+	long old_val = *variable;
+	*variable++;
+	return old_val;
+}
+
+static long atomic_decrement(long volatile* variable) {
+	long old_val = *variable;
+	*variable--;
+	return old_val;
+}
+
+static long atomic_exchange(long volatile* variable, long new_val) {
+	long old_val = *variable;
+	return *variable;
+}
+
+static bool atomic_compare_exchange(long volatile* variable, long new_val, long expected_val) {
+	long old_val = *variable;
+	*variable = new_val;
+	return old_val == expected_val;
+}
+
+#endif /*end of CSERIAL_ATOMIC_IMPL*/
+
+
+/*
+ * Platform-specific CSERIAL definitions
+ */
+#ifdef CSERIAL_PLATFORM_WINDOWS
+
 #define __func__ __FUNCTION__
 
 #define close( x ) CloseHandle( x )
@@ -47,20 +295,7 @@
 
 typedef HANDLE c_serial_mutex_t;
 
-#else
-#include <termios.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <dirent.h>
-#include <pthread.h>
-#include <sys/ioctl.h>
-#include <errno.h>
-#include <poll.h>
-
-#ifdef HAVE_LINUX_SERIAL
-#include <linux/serial.h>
-#endif
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 
 #ifndef ENOMEDIUM
 #define ENOMEDIUM ENODEV
@@ -93,7 +328,7 @@ static uint64_t unix_get_tick_count() {
 	return milliseconds64 / res;
 }
 
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
 #include <stdlib.h>
 #include <errno.h>
@@ -149,12 +384,20 @@ struct c_serial_port {
     void* user_data;
     int is_open;
     int line_flags;
-#ifdef _WIN32
+	
+	atomic_long_type is_read_active;
+
+#ifdef CSERIAL_PLATFORM_POSIX_BASED
+	atomic_long_type cancel_read_event;
+#endif /*CSERIAL_PLATFORM_POSIX_BASED*/
+
+#ifdef CSERIAL_PLATFORM_WINDOWS
     /* Windows-specific variables that we need to keep track of */
     int winDTR;
     int winRTS;
     OVERLAPPED overlap;
-#endif
+	HANDLE cancel_read_event;
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 };
 /* \endcond */
 
@@ -163,7 +406,7 @@ struct c_serial_port {
  */
 
 static int clear_rts( c_serial_port_t* desc ){
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     GET_SERIAL_PORT_STRUCT( desc, newio );
     newio.fRtsControl = RTS_CONTROL_TOGGLE;
     SET_SERIAL_PORT_STRUCT( desc, newio );
@@ -188,12 +431,12 @@ static int clear_rts( c_serial_port_t* desc ){
             return CSERIAL_RTS_TYPE_NOT_AVAILABLE;
         }
     }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
     return CSERIAL_OK;
 }
 
 static int set_rts_hw( c_serial_port_t* desc ){
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     GET_SERIAL_PORT_STRUCT( desc, newio );
     newio.fRtsControl = RTS_CONTROL_TOGGLE;
     SET_SERIAL_PORT_STRUCT( desc, newio );
@@ -208,7 +451,7 @@ static int set_rts_hw( c_serial_port_t* desc ){
     if( ioctl( desc->port, TIOCSRS485, &rs485conf ) < 0 ){
         return CSERIAL_RTS_TYPE_NOT_AVAILABLE;
     }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
     return CSERIAL_OK;
 }
 
@@ -239,7 +482,7 @@ static int set_rts_settings( c_serial_port_t* desc ){
 static int set_raw_input( c_serial_port_t* port ) {
     GET_SERIAL_PORT_STRUCT( port, newio );
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     newio.fBinary = TRUE;
     newio.fParity = TRUE;
     newio.fOutxCtsFlow = FALSE;
@@ -265,7 +508,7 @@ static int set_raw_input( c_serial_port_t* port ) {
             return 0;
         }
     }
-#else
+#else /* CSERIAL_PLATFORM_WINDOWS */
     newio.c_iflag |= IGNBRK;
     newio.c_iflag &= ~BRKINT;
     newio.c_iflag &= ~ICRNL;
@@ -273,7 +516,7 @@ static int set_raw_input( c_serial_port_t* port ) {
     newio.c_lflag = 0;
     newio.c_cc[VTIME] = 0;
     newio.c_cc[VMIN] = 1;
-#endif
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
     SET_SERIAL_PORT_STRUCT( port, newio );
 
@@ -284,26 +527,26 @@ static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
     GET_SERIAL_PORT_STRUCT( desc, newio );
 
     switch( baud_rate ) {
-#ifndef _WIN32
+#ifndef CSERIAL_PLATFORM_WINDOWS
         /* Note that Windows only supports speeds of 110 and above */
         SPEED_SWITCH(0,newio);
         SPEED_SWITCH(50,newio);
         SPEED_SWITCH(75,newio);
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
         SPEED_SWITCH(110,newio);
-#ifndef _WIN32
+#ifndef CSERIAL_PLATFORM_WINDOWS
         /* Windows does not support speeds of 134, 150, or 200 */
         SPEED_SWITCH(134,newio);
         SPEED_SWITCH(150,newio);
         SPEED_SWITCH(200,newio);
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
         SPEED_SWITCH(300,newio);
         SPEED_SWITCH(600,newio);
         SPEED_SWITCH(1200,newio);
-#ifndef _WIN32
+#ifndef CSERIAL_PLATFORM_WINDOWS
         /* Windows does not support 1800 */
         SPEED_SWITCH(1800,newio);
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
         SPEED_SWITCH(2400,newio);
         SPEED_SWITCH(4800,newio);
         SPEED_SWITCH(9600,newio);
@@ -324,9 +567,9 @@ static int set_data_bits( c_serial_port_t* desc,
                           enum CSerial_Data_Bits data_bits ) {
     GET_SERIAL_PORT_STRUCT( desc, newio );
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     newio.ByteSize = data_bits;
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     newio.c_cflag &= ~CSIZE;
     if( data_bits == CSERIAL_BITS_8 ) {
         newio.c_cflag |= CS8;
@@ -337,7 +580,7 @@ static int set_data_bits( c_serial_port_t* desc,
     } else if( data_bits == CSERIAL_BITS_5 ) {
         newio.c_cflag |= CS5;
     }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
     SET_SERIAL_PORT_STRUCT( desc, newio );
 
@@ -351,19 +594,19 @@ static int set_stop_bits( c_serial_port_t* desc,
                           enum CSerial_Stop_Bits stop_bits ) {
     GET_SERIAL_PORT_STRUCT( desc, newio );
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     if( stop_bits == CSERIAL_STOP_BITS_1 ) {
         newio.StopBits = ONESTOPBIT;
     } else if( stop_bits == CSERIAL_STOP_BITS_2 ) {
         newio.StopBits = TWOSTOPBITS;
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     if( stop_bits == CSERIAL_STOP_BITS_1 ) {
         newio.c_cflag &= ~CSTOPB;
     } else if( stop_bits == CSERIAL_STOP_BITS_2 ) {
         newio.c_cflag |= CSTOPB;
     }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
     SET_SERIAL_PORT_STRUCT( desc, newio );
 
@@ -432,7 +675,7 @@ static int set_flow_control( c_serial_port_t* desc,
         return rc;
     }
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     if( flow_control == CSERIAL_FLOW_NONE ) {
         newio.fOutxCtsFlow = FALSE;
         newio.fRtsControl = FALSE;
@@ -449,7 +692,7 @@ static int set_flow_control( c_serial_port_t* desc,
         newio.fOutX = TRUE;
         newio.fInX = TRUE;
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     newio.c_iflag &= ~( IXON | IXOFF | IXANY );
     newio.c_cflag &= ~HW_FLOW;
     if( flow_control == CSERIAL_FLOW_NONE ) {
@@ -459,7 +702,7 @@ static int set_flow_control( c_serial_port_t* desc,
     } else if( flow_control == CSERIAL_FLOW_SOFTWARE ) {
         newio.c_iflag |= ( IXON | IXOFF | IXANY );
     }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
     SET_SERIAL_PORT_STRUCT( desc, newio );
 
@@ -493,19 +736,31 @@ int c_serial_new( c_serial_port_t** port, c_serial_errnum_t* errnum ) {
     new_port->flow = CSERIAL_FLOW_NONE;
     new_port->rs485_is_software = 0;
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     new_port->mutex = CreateMutex( NULL, FALSE, NULL );
-    if( new_port->mutex == NULL ) {
+	new_port->cancel_read_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+	memset(&(new_port->overlap), 0, sizeof(OVERLAPPED));
+	new_port->overlap.hEvent = CreateEvent(0, FALSE, FALSE, 0);
+
+    if( new_port->mutex == NULL || new_port->cancel_read_event == NULL || new_port->overlap.hEvent == NULL ) {
         /* Unable to create mutex for some reason, error out */
         if( errnum != NULL ) *errnum = GetLastError();
+
+		if (new_port->mutex)
+			CloseHandle(new_port->mutex);
+		if (new_port->cancel_read_event)
+			CloseHandle(new_port->cancel_read_event);
+		if (new_port->overlap.hEvent)
+			CloseHandle(new_port->overlap.hEvent);
+
         free( new_port );
         return CSERIAL_ERROR_CANT_CREATE;
     }
-    memset( &(new_port->overlap), 0, sizeof(OVERLAPPED) );
-    new_port->overlap.hEvent = CreateEvent( 0, FALSE, FALSE, 0 );
-#else
+	
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     pthread_mutex_init( &(new_port->mutex), NULL );
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
     *port = new_port;
 
@@ -519,6 +774,14 @@ void c_serial_free( c_serial_port_t* port ) {
 
     c_serial_close( port );
 
+#ifdef CSERIAL_PLATFORM_WINDOWS
+	CloseHandle(port->mutex);
+	CloseHandle(port->cancel_read_event);
+	CloseHandle(port->overlap.hEvent);
+#else
+	pthread_mutex_destroy(&(port->mutex));
+#endif
+
     free( port->port_name );
     free( port );
 }
@@ -527,17 +790,19 @@ void c_serial_close( c_serial_port_t* port ) {
     if( port == NULL ) {
         return;
     }
-    port->is_open = 0;
+
+	c_serial_read_cancel(port, -1);
+
+	port->is_open = 0;
     close( port->port );
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	WaitForSingleObject( port->mutex, INFINITE );
 	ReleaseMutex( port->mutex );
-	CloseHandle( port->mutex );
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 	pthread_mutex_lock( &(port->mutex) );
 	pthread_mutex_unlock( &(port->mutex) );
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 }
 
 int c_serial_open( c_serial_port_t* port ) {
@@ -549,14 +814,16 @@ int c_serial_open_keep_settings( c_serial_port_t* port, int keepSettings ) {
     int retval = CSERIAL_OK;
     CHECK_INVALID_PORT( port );
 
-    if( port->is_open ) return CSERIAL_ERROR_ALREADY_OPEN;
-    if( port->port_name == NULL ) return CSERIAL_ERROR_NO_PORT;
+    if( port->is_open ) 
+		return CSERIAL_ERROR_ALREADY_OPEN;
+    if( port->port_name == NULL ) 
+		return CSERIAL_ERROR_NO_PORT;
     rc = check_rts_handling( port );
     if( rc != CSERIAL_OK ){
         return rc;
     }
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     port->port = CreateFile( port->port_name,
                              GENERIC_READ | GENERIC_WRITE,
                              0, 0,
@@ -571,13 +838,13 @@ int c_serial_open_keep_settings( c_serial_port_t* port, int keepSettings ) {
         return CSERIAL_ERROR_GENERIC;
     }
 
-	port->mutex = CreateMutex( NULL, FALSE, NULL );
+/*	port->mutex = CreateMutex( NULL, FALSE, NULL );
 	if( port->mutex == NULL ){
 		port->last_errnum = GetLastError();
 		LOG_ERROR( LOGGER_NAME, "Unable to create mutex" );
 		return CSERIAL_ERROR_GENERIC;
-	}
-#else
+	}*/
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     port->port = open( port->port_name, O_RDWR );
     if( port->port < 0 ) {
         port->last_errnum = errno;
@@ -597,47 +864,49 @@ int c_serial_open_keep_settings( c_serial_port_t* port, int keepSettings ) {
             return CSERIAL_ERROR_GENERIC;
         }
     }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
     port->is_open = 1;
 
     /* Set all of our settings.  If there are any erorrs, close
      * the port and bail out
      */
-    if( !keepSettings ) {
-        retval = set_raw_input( port );
-        if( retval ){ 
-            c_serial_close( port );
-            goto out;
-        }
-        retval = set_baud_rate( port, port->baud_rate );
-        if( retval ){ 
-            c_serial_close( port );
-            goto out;
-        }
-        retval = set_data_bits( port, port->data_bits );
-        if( retval ){ 
-            c_serial_close( port );
-            goto out;
-        }
-        retval = set_stop_bits( port, port->stop_bits );
-        if( retval ){ 
-            c_serial_close( port );
-            goto out;
-        }
-        retval = set_parity( port, port->parity );
-        if( retval ){ 
-            c_serial_close( port );
-            goto out;
-        }
-        retval = set_flow_control( port, port->flow, port->rs485 );
-        if( retval ){ 
-            c_serial_close( port );
-            goto out;
-        }
-    }
+	do {
+		if (keepSettings)
+			break;
+		
+		retval = set_raw_input(port);
+		if (retval) {
+			c_serial_close(port);
+			break;
+		}
+		retval = set_baud_rate(port, port->baud_rate);
+		if (retval) {
+			c_serial_close(port);
+			break;
+		}
+		retval = set_data_bits(port, port->data_bits);
+		if (retval) {
+			c_serial_close(port);
+			break;
+		}
+		retval = set_stop_bits(port, port->stop_bits);
+		if (retval) {
+			c_serial_close(port);
+			break;
+		}
+		retval = set_parity(port, port->parity);
+		if (retval) {
+			c_serial_close(port);
+			break;
+		}
+		retval = set_flow_control(port, port->flow, port->rs485);
+		if (retval) {
+			c_serial_close(port);
+			break;
+		}
+	} while (0);
 
-out:
     return retval;
 }
 
@@ -654,36 +923,35 @@ int c_serial_set_port_name( c_serial_port_t* port,
     CHECK_INVALID_PORT( port );
 
     port_name_len = strlen( port_name );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	if( port_name_len > 6 ){
 		return CSERIAL_ERROR_NAME_TOO_LONG;
 	}
     port_name_offset = 4;
     port_name_len += 5; /* add in \\.\ to the front and have NULL terminator */
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 	if( port_name_len > 255 ){
 		return CSERIAL_ERROR_NAME_TOO_LONG;
 	}
     port_name_offset = 0;
     port_name_len += 1;
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
     port->port_name = malloc( port_name_len );
     memset( port->port_name, 0, port_name_len );
     memcpy( port->port_name + port_name_offset,
             port_name,
             strlen( port_name ) );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     memcpy( port->port_name, "\\\\.\\", 4 );
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
     return CSERIAL_OK;
 }
 
 const char* c_serial_get_port_name( c_serial_port_t* port ) {
-    if( port == NULL ) {
+    if( port == NULL ) 
         return NULL;
-    }
 
     return port->port_name;
 }
@@ -711,27 +979,27 @@ enum CSerial_Baud_Rate c_serial_get_baud_rate( c_serial_port_t* port ) {
 
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
         GetCommState( port->port, &newio );
         switch( newio.BaudRate ) {
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
         switch( cfgetispeed( &newio ) ) {
             GET_SPEED_SWITCH( 0, newio );
             GET_SPEED_SWITCH( 50, newio );
             GET_SPEED_SWITCH( 75, newio );
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
             GET_SPEED_SWITCH( 110, newio );
-#ifndef _WIN32
+#ifndef CSERIAL_PLATFORM_WINDOWS
             GET_SPEED_SWITCH( 134, newio );
             GET_SPEED_SWITCH( 150, newio );
             GET_SPEED_SWITCH( 200, newio );
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
             GET_SPEED_SWITCH( 300, newio );
             GET_SPEED_SWITCH( 600, newio );
             GET_SPEED_SWITCH( 1200, newio );
-#ifndef _WIN32
+#ifndef CSERIAL_PLATFORM_WINDOWS
             GET_SPEED_SWITCH( 1800, newio );
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
             GET_SPEED_SWITCH( 2400, newio );
             GET_SPEED_SWITCH( 4800, newio );
             GET_SPEED_SWITCH( 9600, newio );
@@ -765,7 +1033,7 @@ enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
         switch( newio.ByteSize ) {
         case 5:
             return CSERIAL_BITS_5;
@@ -776,7 +1044,7 @@ enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
         case 8:
             return CSERIAL_BITS_8;
         }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
         if( ( newio.c_cflag | CS8 ) == CS8 ) {
             return CSERIAL_BITS_8;
         } else if( ( newio.c_cflag | CS7 ) == CS7 ) {
@@ -788,7 +1056,7 @@ enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
         } else {
             return 0;
         }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
     }
 
 	return -1;
@@ -811,7 +1079,7 @@ enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
 
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
         port->stop_bits = newio.StopBits;
         if( newio.StopBits == 1 ) {
             return 1;
@@ -820,7 +1088,7 @@ enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
         } else {
             return -1;
         }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
         if( newio.c_cflag & CSTOPB ) {
             port->stop_bits = 2;
             return 2;
@@ -828,7 +1096,7 @@ enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
             port->stop_bits = 1;
             return 1;
         }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
     }
 }
 
@@ -849,7 +1117,7 @@ enum CSerial_Parity c_serial_get_parity( c_serial_port_t* port ) {
 
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
         if( newio.Parity == NOPARITY ) {
             return 0;
         } else if( newio.Parity == ODDPARITY ) {
@@ -859,7 +1127,7 @@ enum CSerial_Parity c_serial_get_parity( c_serial_port_t* port ) {
         } else {
             return -1;
         }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
         if( !( newio.c_cflag & PARENB ) ) {
             /* No parity */
             return 0;
@@ -872,7 +1140,7 @@ enum CSerial_Parity c_serial_get_parity( c_serial_port_t* port ) {
         } else {
             return -1;
         }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
     }
 }
 
@@ -904,7 +1172,7 @@ enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
     CHECK_INVALID_PORT( port );
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
         if( newio.fOutX == TRUE && newio.fInX == TRUE ) {
             return 2;
         } else if( newio.fRtsControl == TRUE && newio.fOutxCtsFlow == TRUE ) {
@@ -912,7 +1180,7 @@ enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
         } else {
             return 0;
         }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
         if( newio.c_cflag & ~( IXON ) &&
                 newio.c_cflag & ~( IXOFF ) &&
                 newio.c_cflag & ~( IXANY ) ) {
@@ -924,7 +1192,7 @@ enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
                    newio.c_cflag & ( IXANY ) ) {
             return 2;
         }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
     }
 
     return 0;
@@ -933,11 +1201,11 @@ enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
 int c_serial_write_data( c_serial_port_t* port,
                          void* data,
                          int* length ) {
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD bytes_written;
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     int bytes_written;
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
     CHECK_INVALID_PORT( port );
 
@@ -983,18 +1251,18 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 	void* data,
 	int* length,
 	int timeout_msec) {
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD bytes_written;
 	ULONGLONG start_timestamp = GetTickCount64();
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 	int bytes_written;
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
 	CHECK_INVALID_PORT(port);
 
 	SET_RTS_IF_REQUIRED(port);
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	if (!WriteFile(port->port, data, *length, NULL, &(port->overlap))) {
 		port->last_errnum = GetLastError();
 		if (GetLastError() == ERROR_IO_PENDING) {
@@ -1025,7 +1293,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 		LOG_ERROR(LOGGER_NAME, "Unable to write data");
 		return CSERIAL_ERROR_GENERIC;
 	}
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 	(void)timeout_msec;
 
 	bytes_written = write(port->port, data, *length);
@@ -1034,7 +1302,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 		LOG_ERROR(LOGGER_NAME, "Unable to write data to serial port");
 		return CSERIAL_ERROR_GENERIC;
 	}
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 	*length = bytes_written;
 
 	CLEAR_RTS_IF_REQUIRED(port);
@@ -1050,20 +1318,24 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 	int timeout_msec) {
 
 	int ret_code = CSERIAL_OK;
-#ifdef _WIN32
+
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD ret = 0;
 	ULONGLONG start_timestamp = GetTickCount64();
 	int current_available = 0;
 	int bytesGot;
 	int originalControlState;
 	int gotData = 0;
-#else
+	HANDLE wait_objects[2];
+	DWORD wait_result = 0;
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 	fd_set fdset;
 	struct timeval timeout;
 	int originalControlState;
 	int selectStatus;
 	int newControlState;
-#endif
+	uint64_t start_timestamp = unix_get_tick_count();
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
 	CHECK_INVALID_PORT(port);
 
@@ -1071,9 +1343,24 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		return CSERIAL_ERROR_INCORRECT_READ_PARAMS;
 	}
 
-#ifdef _WIN32
-	if (WaitForSingleObject(port->mutex, timeout_msec) == WAIT_FAILED)
+	/* Set read activity flag*/
+	atomic_exchange(&port->is_read_active, 1);
+
+#ifdef CSERIAL_PLATFORM_WINDOWS
+	ResetEvent(port->cancel_read_event);
+
+	wait_objects[0] = port->overlap.hEvent;
+	wait_objects[1] = port->cancel_read_event;
+
+	wait_result = WaitForMultipleObjects(2, wait_objects, FALSE, timeout_msec);
+	if (wait_result != WAIT_OBJECT_0)
+		atomic_exchange(&port->is_read_active, 0);
+
+	if (wait_result == WAIT_TIMEOUT) 
 		return CSERIAL_ERROR_TIMEOUT;
+
+	if (wait_result == WAIT_OBJECT_0 + 1) 
+		return CSERIAL_ERROR_CANCELLED;
 
 	if (GetCommModemStatus(port->port, &originalControlState) == 0) {
 		LOG_ERROR(LOGGER_NAME, "Unable to get comm modem lines");
@@ -1111,8 +1398,18 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 			SetCommMask(port->port, EV_RXCHAR | EV_CTS | EV_DSR | EV_RING);
 			WaitCommEvent(port->port, &ret, &(port->overlap));
-			if (WaitForSingleObject(port->overlap.hEvent, wait_time) == WAIT_FAILED) {
+			
+			wait_objects[0] = port->overlap.hEvent;
+			wait_objects[1] = port->cancel_read_event;
+
+			wait_result = WaitForMultipleObjects(2, wait_objects, FALSE, wait_time);
+			if (wait_result == WAIT_TIMEOUT) {
 				ret_code = CSERIAL_ERROR_TIMEOUT;
+				break;
+			}
+
+			if (wait_result == WAIT_OBJECT_0 + 1) {
+				ret_code = CSERIAL_ERROR_CANCELLED;
 				break;
 			}
 		}
@@ -1123,8 +1420,10 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 		if (ret == 0 && !port->is_open) {
 			/* the port was closed */
-			ReleaseMutex(port->mutex);
-			return -1;
+			//ReleaseMutex(port->mutex);
+			//return -1;
+			ret_code = CSERIAL_ERROR_NO_SUCH_SERIAL_PORT;
+			break;
 		}
 
 		if (ret & EV_RXCHAR && data != NULL) {
@@ -1157,7 +1456,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 	} while (1);
 
-	if (lines != NULL) {
+	if (ret_code == CSERIAL_OK && lines != NULL) {
 		int modemLines;
 
 		if (GetCommModemStatus(port->port, &modemLines) == 0) {
@@ -1192,8 +1491,8 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 	}
 
 	ReleaseMutex(port->mutex);
-#else
-    uint64_t start_timestamp = unix_get_tick_count();
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+	atomic_exchange(&port->cancel_read_event, 0);
 
 	if (timeout_msec < 0) {
 		pthread_mutex_lock(&(port->mutex));
@@ -1224,10 +1523,18 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			break;
 		}
 
-		if (!port->is_open) {
-			pthread_mutex_unlock(&(port->mutex));
-			return -1;
+		if (port->cancel_read_event) {
+			ret_code = CSERIAL_ERROR_CANCELLED;
+			break;
 		}
+
+		if (!port->is_open) {
+//			pthread_mutex_unlock(&(port->mutex));
+//			return -1;
+			ret_code = CSERIAL_ERROR_NO_SUCH_SERIAL_PORT;
+			break;
+		}
+
 		FD_ZERO(&fdset);
 		FD_SET(port->port, &fdset);
 		timeout.tv_sec = 0;
@@ -1238,19 +1545,25 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		}
 
 		selectStatus = select(port->port + 1, &fdset, NULL, NULL, &timeout);
-		if (!port->is_open) {
+		
+//		if (!port->is_open) {
 			/* check to see if the port is closed */
-			pthread_mutex_unlock(&(port->mutex));
-			return -1;
-		}
+			//pthread_mutex_unlock(&(port->mutex));
+			//return -1;
+//			ret_code = CSERIAL_ERROR_NO_SUCH_SERIAL_PORT;
+//			break;
+//		}
 
 		if (selectStatus < 0) {
 			if (errno != EBADF) {
 				port->last_errnum = errno;
 				LOG_ERROR(LOGGER_NAME, "Bad value from select");
 			}
-			pthread_mutex_unlock(&(port->mutex));
-			return -1;
+
+			ret_code = CSERIAL_ERROR_GENERIC;
+			break;
+			//pthread_mutex_unlock(&(port->mutex));
+			//return -1;
 		}
 
 		if (selectStatus == 0) {
@@ -1258,8 +1571,11 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			if (ioctl(port->port, TIOCMGET, &newControlState) < 0) {
 				port->last_errnum = errno;
 				LOG_ERROR(LOGGER_NAME, "IOCTL call failed");
-				pthread_mutex_unlock(&(port->mutex));
-				return -1;
+				
+				ret_code = CSERIAL_ERROR_GENERIC;
+				break;
+				//pthread_mutex_unlock(&(port->mutex));
+				//return -1;
 			}
 
 			if (newControlState == originalControlState) {
@@ -1268,7 +1584,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 							  */
 				continue;
 			}
-
 		}
 
 		if (FD_ISSET(port->port, &fdset) && data != NULL) {
@@ -1326,20 +1641,27 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		break;
 	}
 
-	if (FD_ISSET(port->port, &fdset) && data != NULL) {
+	*data_length = 0;
+
+	if (ret_code == CSERIAL_OK 
+		&& FD_ISSET(port->port, &fdset)
+		&& data != NULL) {
+		
 		int ret = read(port->port, data, *data_length);
 		if (ret < 0) {
 			port->last_errnum = errno;
 			LOG_ERROR(LOGGER_NAME, "Unable to read data");
-			return CSERIAL_ERROR_GENERIC;
+			ret_code = CSERIAL_ERROR_GENERIC;
+			//return CSERIAL_ERROR_GENERIC;
 		}
-		*data_length = ret;
-	}
-	else {
-		*data_length = 0;
+		else {
+			*data_length = ret;
+		}
 	}
 
-	if (lines != NULL) {
+	if (ret_code == CSERIAL_OK 
+		&& lines != NULL) {
+
 		memset(lines, 0, sizeof(struct c_serial_control_lines));
 		if (newControlState & TIOCM_CD) {
 			/* Carrier detect */
@@ -1373,325 +1695,103 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 	}
 
 	pthread_mutex_unlock(&(port->mutex));
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
+	atomic_exchange(&port->is_read_active, 0);
 	return ret_code;
 }
-
 
 
 int c_serial_read_data( c_serial_port_t* port,
                         void* data,
                         int* data_length,
                         c_serial_control_lines_t* lines ) {
-    
-#ifdef _WIN32
-    DWORD ret = 0;
-    int current_available = 0;
-	int bytesGot;
-	int originalControlState;
-	int gotData = 0;
-#else
-    fd_set fdset;
-    struct timeval timeout;
-    int originalControlState;
-    int selectStatus;
-    int newControlState;
+	return c_serial_read_data_timeout(port, data, data_length, lines, -1);
+}
+
+int c_serial_read_cancel(c_serial_port_t* port, int timeout_msec) {
+
+	int ret_code = CSERIAL_OK;
+#ifdef CSERIAL_PLATFORM_WINDOWS
+	ULONGLONG start_timestamp = GetTickCount64();
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+uint64_t start_timestamp = unix_get_tick_count();
 #endif
 
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
-    if( data == NULL && lines == NULL ) {
-        return CSERIAL_ERROR_INCORRECT_READ_PARAMS;
-    }
+	while (port->is_read_active) {
+#ifdef CSERIAL_PLATFORM_WINDOWS
+		ULONGLONG current_timestamp = GetTickCount64();
+		ULONGLONG wait_time = INFINITE;
+		SetEvent(port->cancel_read_event);
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+		uint64_t current_timestamp = unix_get_tick_count();
+		uint64_t wait_time = 0;
+		atomic_exchange(&port->cancel_read_event, 1);
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-#ifdef _WIN32
-	WaitForSingleObject( port->mutex, INFINITE );
-	if( GetCommModemStatus( port->port, &originalControlState ) == 0 ){
-		LOG_ERROR( LOGGER_NAME, "Unable to get comm modem lines" );
-		return -1;
-	}
-	do{
-		{
-			DWORD comErrors = { 0 };
-			COMSTAT portStatus = { 0 };
-			if( !ClearCommError( port->port, &comErrors, &portStatus ) ){
-				LOG_ERROR( LOGGER_NAME, "Unable to ClearCommError" );
-				return -1;
+		if (timeout_msec >= 0) {
+			if ((int)(current_timestamp - start_timestamp) >= timeout_msec) {
+				ret_code = CSERIAL_ERROR_TIMEOUT;
+				break;
 			}
-			else{
-				current_available = portStatus.cbInQue;
-			}
-		}
-
-
-		if( !current_available ){
-			/* If nothing is currently available, wait until we get an event of some kind.
-			 * This could be the serial lines changing state, or it could be some data
-			 * coming into the system.
-			 */
-			SetCommMask( port->port, EV_RXCHAR | EV_CTS | EV_DSR | EV_RING );
-			WaitCommEvent( port->port, &ret, &(port->overlap) );
-			WaitForSingleObject( port->overlap.hEvent, INFINITE );
-		}
-		else{
-			/* Data is available; set the RXCHAR mask so we try to read from the port */
-			ret = EV_RXCHAR;
-		}
-
-		if( ret == 0 && !port->is_open ){
-			/* the port was closed */
-			ReleaseMutex( port->mutex );
-			return -1;
-		}
-
-		if( ret & EV_RXCHAR && data != NULL ){
-			if( !ReadFile( port->port, data, *data_length, &bytesGot, &(port->overlap) ) ){
-				LOG_ERROR(LOGGER_NAME, "Unable to read bytes from port");
-				ReleaseMutex( port->mutex );
-				*data_length = 0;
-				return CSERIAL_ERROR_GENERIC;
-			}
-			gotData = 1;
-			*data_length = bytesGot;
-			break;
-		}
-
-		/* Check to see if anything changed that we care about */
-		if( ( ret & EV_CTS ) &&
-			( port->line_flags & CSERIAL_LINE_FLAG_CTS ) ){
-			break;
-		}
-
-		if( ( ret & EV_DSR ) &&
-			( port->line_flags & CSERIAL_LINE_FLAG_DSR ) ){
-			break;
-		}
-
-		if( ( ret & EV_RING ) &&
-			( port->line_flags & CSERIAL_LINE_FLAG_RI ) ){
-			break;
+			wait_time = timeout_msec - (int)(current_timestamp - start_timestamp);
 		}
 		
-	}while( 1 );
+#ifdef CSERIAL_PLATFORM_WINDOWS
+		if (WaitForSingleObject(port->mutex, (DWORD)wait_time) == WAIT_OBJECT_0)
+			ReleaseMutex(port->mutex);
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+		if (timeout_msec < 0) {
+			pthread_mutex_lock(&(port->mutex));
+			pthread_mutex_unlock(&(port->mutex));
+		} else {
+			struct timespec timeout_time;
+			clock_gettime(CLOCK_REALTIME, &timeout_time);
+			timeout_time.tv_sec += wait_time / 1000;
+			timeout_time.tv_nsec += (wait_time % 1000) * 1000;
 
-	if( lines != NULL ){
-		int modemLines;
-
-		if( GetCommModemStatus( port->port, &modemLines ) == 0 ){
-			LOG_ERROR( LOGGER_NAME, "Unable to get comm modem lines" );
-			return -1;
+			if (pthread_mutex_timedlock(&(port->mutex), &timeout_time) == 0) {
+				pthread_mutex_unlock(&(port->mutex));
+			}
 		}
-
-		memset( lines, 0, sizeof( c_serial_control_lines_t ) );
-		if( modemLines & MS_CTS_ON ){
-			lines->cts = 1;
-		}
-
-		if( modemLines & MS_DSR_ON ){
-			lines->dsr = 1;
-		}
-
-		if( port->winDTR ){
-			lines->dtr = 1;
-		}
-
-		if( port->winRTS ){
-			lines->rts = 1;
-		}
-
-		if( modemLines & MS_RING_ON ){
-			lines->ri = 1;
-		}
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 	}
 
-	if( !gotData ){
-		*data_length = 0;
+	if (ret_code == CSERIAL_OK) {
+#ifdef CSERIAL_PLATFORM_WINDOWS
+		ResetEvent(port->cancel_read_event);
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+		atomic_exchange(&port->cancel_read_event, 0);
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 	}
 
-	ReleaseMutex( port->mutex );
-#else
-    pthread_mutex_lock( &(port->mutex) );
-
-    /* first get the original state of the serial port lines */
-    if( ioctl( port->port, TIOCMGET, &originalControlState ) < 0 ) {
-        port->last_errnum = errno;
-        LOG_ERROR( LOGGER_NAME, "IOCTL failed" );
-        pthread_mutex_unlock( &(port->mutex) );
-        return -1;
-    }
-
-    while( 1 ) {
-        if( !port->is_open ) {
-            pthread_mutex_unlock( &(port->mutex) );
-            return -1;
-        }
-        FD_ZERO( &fdset );
-        FD_SET( port->port, &fdset );
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 10000; /* 10,000 microseconds = 10ms */
-
-        selectStatus = select( port->port + 1, &fdset, NULL, NULL, &timeout );
-        if( !port->is_open ) {
-            /* check to see if the port is closed */
-            pthread_mutex_unlock( &(port->mutex) );
-            return -1;
-        }
-
-        if( selectStatus < 0 ) {
-            if( errno != EBADF ) {
-                port->last_errnum = errno;
-                LOG_ERROR( LOGGER_NAME, "Bad value from select" );
-            }
-            pthread_mutex_unlock( &(port->mutex) );
-            return -1;
-        }
-
-        if( selectStatus == 0 ) {
-            /* This was a timeout */
-            if( ioctl( port->port, TIOCMGET, &newControlState ) < 0 ) {
-                port->last_errnum = errno;
-                LOG_ERROR( LOGGER_NAME, "IOCTL call failed" );
-                pthread_mutex_unlock( &(port->mutex) );
-                return -1;
-            }
-
-            if( newControlState == originalControlState ) {
-                /* The state of the lines have not changed,
-                 * continue on until something changes
-                              */
-                continue;
-            }
-
-        }
-
-        if( FD_ISSET( port->port, &fdset ) && data != NULL ) {
-            break;
-        }
-
-        if( lines != NULL ){
-            /* Our line state has changed - check to see if we should ignore the
-             * change or if this is a valid reason to stop trying to read
-             */
-             int shouldContinue = 1;
-             int ctsChanged = ( newControlState & TIOCM_CTS ) != ( originalControlState & TIOCM_CTS );
-             int cdChanged = ( newControlState & TIOCM_CD ) != ( originalControlState & TIOCM_CD );
-             int dsrChanged = ( newControlState & TIOCM_DSR ) != ( originalControlState & TIOCM_DSR );
-             int dtrChanged = ( newControlState & TIOCM_DTR ) != ( originalControlState & TIOCM_DTR );
-             int rtsChanged = ( newControlState & TIOCM_RTS ) != ( originalControlState & TIOCM_RTS );
-             int riChanged = ( newControlState & TIOCM_RI ) != ( originalControlState & TIOCM_RI );
-
-             if( ( port->line_flags & CSERIAL_LINE_FLAG_CTS ) &&
-                 ctsChanged ){
-                 shouldContinue = 0;
-             }
-             if( ( port->line_flags & CSERIAL_LINE_FLAG_CD ) &&
-                 cdChanged ){
-                 shouldContinue = 0;
-             }
-             if( ( port->line_flags & CSERIAL_LINE_FLAG_DSR ) &&
-                 dsrChanged ){
-                 shouldContinue = 0;
-             }
-             if( ( port->line_flags & CSERIAL_LINE_FLAG_DTR ) &&
-                 dtrChanged ){
-                 shouldContinue = 0;
-             }
-             if( ( port->line_flags & CSERIAL_LINE_FLAG_RTS ) &&
-                 rtsChanged ){
-                 shouldContinue = 0;
-             }
-             if( ( port->line_flags & CSERIAL_LINE_FLAG_RI ) &&
-                 riChanged ){
-                 shouldContinue = 0;
-             }
-
-
-             if( shouldContinue ){
-                 continue;
-             }
-
-             break;
-        }
-
-        /* We get to this point if we either 1. have data or
-         * 2. our state has changed
-                 */
-        break;
-    }
-
-    if( FD_ISSET( port->port, &fdset ) && data != NULL ) {
-        int ret = read( port->port, data, *data_length );
-        if( ret < 0 ){
-            port->last_errnum = errno;
-            LOG_ERROR( LOGGER_NAME, "Unable to read data" );
-            return CSERIAL_ERROR_GENERIC;
-        }
-        *data_length = ret;
-    }else{
-        *data_length = 0;
-    }
-
-    if( lines != NULL ) {
-        memset( lines, 0, sizeof( struct c_serial_control_lines ) );
-        if( newControlState & TIOCM_CD ) {
-            /* Carrier detect */
-            lines->cd = 1;
-        }
-
-        if( newControlState & TIOCM_CTS ) {
-            /* CTS */
-            lines->cts = 1;
-        }
-
-        if( newControlState & TIOCM_DSR ) {
-            /* Data Set Ready */
-            lines->dsr = 1;
-        }
-
-        if( newControlState & TIOCM_DTR ) {
-            /* Data Terminal Ready */
-            lines->dtr = 1;
-        }
-
-        if( newControlState & TIOCM_RTS ) {
-            /* Request To Send */
-            lines->rts = 1;
-        }
-
-        if( newControlState & TIOCM_RI ) {
-            /* Ring Indicator */
-            lines->ri = 1;
-        }
-    }
-
-    pthread_mutex_unlock( &(port->mutex) );
-#endif
-
-    return CSERIAL_OK;
+	return ret_code;
 }
 
 c_serial_handle_t c_serial_get_native_handle( c_serial_port_t* port ) {
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	if( port == NULL ){
 		return NULL;
 	}
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     CHECK_INVALID_PORT( port );
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
     return port->port;
 }
 
 c_serial_handle_t c_serial_get_poll_handle( c_serial_port_t* port ){
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
 	if( port == NULL ){
 		return NULL;
 	}
     return port->overlap.hEvent;
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     CHECK_INVALID_PORT( port );
     return port->port;
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 }
 
 int c_serial_set_control_line( c_serial_port_t* port,
@@ -1704,7 +1804,7 @@ int c_serial_set_control_line( c_serial_port_t* port,
         return CSERIAL_ERROR_GENERIC;
     }
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     if( lines->dtr ) {
         if( !EscapeCommFunction( port->port, SETDTR ) ) {
             port->last_errnum = GetLastError();
@@ -1736,7 +1836,7 @@ int c_serial_set_control_line( c_serial_port_t* port,
         }
         port->winRTS = 0;
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
 
     if( ioctl( port->port, TIOCMGET, &toSet ) < 0 ) {
         port->last_errnum = errno;
@@ -1761,7 +1861,7 @@ int c_serial_set_control_line( c_serial_port_t* port,
         LOG_ERROR( LOGGER_NAME, "IOCTL failed when attempting to set control lines" );
         return CSERIAL_ERROR_GENERIC;
     }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
     if( return_state ) {
         return c_serial_get_control_lines( port, lines );
@@ -1780,7 +1880,7 @@ int c_serial_get_control_lines( c_serial_port_t* port,
 
     memset( lines, 0, sizeof( c_serial_control_lines_t ) );
     {
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
         DWORD get_val;
         if( GetCommModemStatus( port->port, &get_val ) == 0 ) {
             port->last_errnum = GetLastError();
@@ -1807,7 +1907,7 @@ int c_serial_get_control_lines( c_serial_port_t* port,
         if( get_val & MS_RING_ON ) {
             lines->ri = 1;
         }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
         int get_val;
         if( ioctl( port->port, TIOCMGET, &get_val ) < 0 ) {
             port->last_errnum = errno;
@@ -1838,7 +1938,7 @@ int c_serial_get_control_lines( c_serial_port_t* port,
         if( get_val & TIOCM_RI ) {
             lines->ri = 1;
         }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
     }
 
     return CSERIAL_OK;
@@ -1847,7 +1947,7 @@ int c_serial_get_control_lines( c_serial_port_t* port,
 int c_serial_get_available( c_serial_port_t* port,
                             int* available ) {
     CHECK_INVALID_PORT( port );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     {
         DWORD comErrors = {0};
         COMSTAT portStatus = {0};
@@ -1859,13 +1959,13 @@ int c_serial_get_available( c_serial_port_t* port,
             *available = portStatus.cbInQue;
         }
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     if( ioctl( port->port, FIONREAD, available ) < 0 ) {
         port->last_errnum = errno;
         LOG_ERROR( LOGGER_NAME, "IOCTL failed when attempting to read bytes available" );
         return CSERIAL_ERROR_GENERIC;
     }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
     return CSERIAL_OK;
 }
 
@@ -1912,6 +2012,8 @@ const char* c_serial_get_error_string( int errnum ) {
         return "Invalid parameters to read from serial port";
     case CSERIAL_ERROR_CANT_CREATE:
         return "Unable to create serial port";
+	case CSERIAL_ERROR_TIMEOUT:
+		return "Timeout";
     default:
         return "Unknown error";
     }
@@ -1955,7 +2057,7 @@ const char** c_serial_get_serial_ports_list() {
     port_names_size = 0;
     port_names = malloc( sizeof( char* ) * 512 );
 	memset( port_names, 0, sizeof( char* ) * 512 );
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     {
         int x;
         /* Brute force, baby! */
@@ -1979,7 +2081,7 @@ const char** c_serial_get_serial_ports_list() {
         }
         free( port_to_open );
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     {
         struct dirent *entry;
         DIR* dir;
@@ -2028,7 +2130,7 @@ const char** c_serial_get_serial_ports_list() {
         closedir( dir );
         free( deviceName );
     }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
     port_names[ port_names_size + 1 ] = NULL;
 
@@ -2082,17 +2184,17 @@ enum CSerial_RTS_Handling c_serial_get_rts_control( c_serial_port_t* port ){
 int c_serial_flush( c_serial_port_t* port ){
     CHECK_INVALID_PORT( port );
 
-#ifdef _WIN32
+#ifdef CSERIAL_PLATFORM_WINDOWS
     if( FlushFileBuffers( port->port ) == 0 ){
         port->last_errnum = GetLastError();
         return CSERIAL_ERROR_GENERIC;
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     if( tcflush( port->port, TCOFLUSH ) < 0 ){
         port->last_errnum = errno;
         return CSERIAL_ERROR_GENERIC;
     }
-#endif /* _WIN32 */
+#endif /* CSERIAL_PLATFORM_WINDOWS */
 
     return CSERIAL_OK;
 }
