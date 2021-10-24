@@ -26,8 +26,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#ifdef _WIN32
- 
+#ifdef _WIN32 
   #ifdef cserial_EXPORTS
     #define CSERIAL_EXPORT __declspec( dllexport )
   #else
@@ -53,6 +52,9 @@ typedef int c_serial_handle_t;
 typedef int c_serial_errnum_t;
 
 #endif /* _WIN32 */
+
+#define CSERIAL_MAX_PORTS 512
+
 
 /*
  * Error code definitions
@@ -355,6 +357,9 @@ CSERIAL_EXPORT int c_serial_write_data_timeout(c_serial_port_t* port,
  * returns.  If a mask of serial lines to listen to has been set using
  * c_serial_set_serial_line_change_flags, then this function may return
  * without having read any data into the data buffer.
+ * Function blocks control execution, but can be cancelled and unblocked immediately
+ * with c_serial_read_cancel() call from another thread. In this case function 
+ * returns CSERIAL_ERROR_CANCELLED
  *
  * If data is NULL and lines is non-NULL, but no change_flags have been set,
  * this function returns immediately without having read any data.
@@ -366,13 +371,48 @@ CSERIAL_EXPORT int c_serial_write_data_timeout(c_serial_port_t* port,
  *  were read. 
  * @param lines The state of the serial lines on read of data.  If waiting for
  *  the line state to change, cannot be NULL
- * @return CSERIAL_OK on success, error code otherwise
+ * @return CSERIAL_OK on success, 
+ *         CSERIAL_ERROR_CANCELLED on operation cancelled via call c_serial_read_cancel() from other thread,
+ *         error code otherwise
  */
 CSERIAL_EXPORT int c_serial_read_data( c_serial_port_t* port,
                                        void* data,
                                        int* data_length,
                                        c_serial_control_lines_t* lines );
 
+/**
+ * Read data from the serial port.
+ * Acts like read() in POSIX systems, except that it will also return the
+ * state of the serial lines.  This function will block for data before it
+ * returns.  If a mask of serial lines to listen to has been set using
+ * c_serial_set_serial_line_change_flags, then this function may return
+ * without having read any data into the data buffer.
+ * Function blocks control execution, but can be cancelled and unblocked immediately
+ * with c_serial_read_cancel() call from another thread. In this case function
+ * returns CSERIAL_ERROR_CANCELLED
+ *
+ * Execution control will be blocked for timeout_msec time. If timeout elapsed,
+ * but nothing received, function will return CSERIAL_ERROR_TIMEOUT. Serial read
+ * event is not cancelled in this case, so user can continue to polling handle by himself
+ * If timeout_msec < 0, it means infinite wait.
+ *
+ * If data is NULL and lines is non-NULL, but no change_flags have been set,
+ * this function returns immediately without having read any data.
+ *
+ * @param port The port to read data from
+ * @param data The buffer to write data to.  May be NULL if you are only
+ *  interested in listening for serial line changes.
+ * @param data_length On entry, how long the data is.  On exit, how many bytes
+ *  were read.
+ * @param lines The state of the serial lines on read of data.  If waiting for
+ *  the line state to change, cannot be NULL
+ * @param timeout_msec  Wait timeout for serial data or state change, in milliseconds. 
+ *  If value less than zero, it means wait infinite.
+ * @return CSERIAL_OK on success, 
+ *         CSERIAL_ERROR_TIMEOUT on timeout happened,
+ *         CSERIAL_ERROR_CANCELLED on operation cancelled via call c_serial_read_cancel() from other thread,
+ *         error code otherwise
+ */
 CSERIAL_EXPORT int c_serial_read_data_timeout(
 	c_serial_port_t* port,
 	void* data,
@@ -530,7 +570,19 @@ CSERIAL_EXPORT enum CSerial_RTS_Handling c_serial_get_rts_control(
  */
 CSERIAL_EXPORT int c_serial_flush( c_serial_port_t* port );
 
-
+/**
+ * Terminate c_serial_read or c_serial_read_timeout function which called on another thread.
+ * Read function will unblock execution control as fast as possible. 
+ * c_serial_read_cancel can wait for read operation termination, or return control immediately.
+ * timeout_msec means the timeout for wait until all read operations will be cancelled.
+ * This function is cancel only current operations, but not future calls for serial read.
+ * @param  port  The serial port object
+ * @param  timeout_msec  How much time wait for read operation has been terminated, in millisecond.
+ *         Negative values means infinite wait
+ * @return  CSERIAL_OK - read operations were not started or terminated successfully,
+ *          CSERIAL_ERROR_TIMEOUT - timeout occured,
+ *          any other values - error code
+ */
 CSERIAL_EXPORT int c_serial_read_cancel(c_serial_port_t* port, int timeout_msec);
 
 #ifdef __cplusplus
