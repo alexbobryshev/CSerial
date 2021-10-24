@@ -387,8 +387,9 @@ CSERIAL_EXPORT int c_serial_read_data_timeout(
  * the ReadFile/WriteFile system calls.  To get the HANDLE for the 
  * Event, use c_serial_get_poll_handle()
  */
-CSERIAL_EXPORT c_serial_handle_t c_serial_get_native_handle( 
-                                                 c_serial_port_t* port );
+CSERIAL_EXPORT int c_serial_get_native_handle(
+	c_serial_port_t* port, 
+	c_serial_handle_t* out_handle);
 
 /**
  * Get the native handle used for a poll()-like function.
@@ -400,8 +401,9 @@ CSERIAL_EXPORT c_serial_handle_t c_serial_get_native_handle(
  * using a function such as MsgWaitForMultipleObjectsEx or 
  * WaitForSingleObject.
  */
-CSERIAL_EXPORT c_serial_handle_t c_serial_get_poll_handle(
-                                                 c_serial_port_t* port );
+CSERIAL_EXPORT int c_serial_get_poll_handle(
+	c_serial_port_t* port,
+	c_serial_handle_t* out_handle);
 
 /**
  * Set the state of the control lines, optionally returning the current 

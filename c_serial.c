@@ -274,7 +274,7 @@ static bool atomic_compare_exchange(long volatile* variable, long new_val, long 
  */
 #ifdef CSERIAL_PLATFORM_WINDOWS
 
-#define __func__ __FUNCTION__
+//#define __func__ __FUNCTION__
 
 #define close( x ) CloseHandle( x )
 #define SPEED_SWITCH(SPD,io) case SPD: io.BaudRate = CBR_##SPD; break;
@@ -340,10 +340,6 @@ static uint64_t unix_get_tick_count() {
 /*
  * Local defines
  */
-#define CHECK_INVALID_PORT( port ) \
-  if( port == NULL ){\
-    return CSERIAL_ERROR_INVALID_PORT;\
-  }
 
 #define SET_RTS_IF_REQUIRED( port ) \
   if( port->rs485_is_software ) { \
@@ -396,6 +392,7 @@ struct c_serial_port {
     int winDTR;
     int winRTS;
     OVERLAPPED overlap;
+	OVERLAPPED write_overlap;
 	HANDLE cancel_read_event;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 };
@@ -742,8 +739,9 @@ int c_serial_new( c_serial_port_t** port, c_serial_errnum_t* errnum ) {
 
 	memset(&(new_port->overlap), 0, sizeof(OVERLAPPED));
 	new_port->overlap.hEvent = CreateEvent(0, FALSE, FALSE, 0);
+	new_port->write_overlap.hEvent = CreateEvent(0, FALSE, FALSE, 0);
 
-    if( new_port->mutex == NULL || new_port->cancel_read_event == NULL || new_port->overlap.hEvent == NULL ) {
+    if( new_port->mutex == NULL || new_port->cancel_read_event == NULL || new_port->overlap.hEvent == NULL || new_port->write_overlap.hEvent == NULL ) {
         /* Unable to create mutex for some reason, error out */
         if( errnum != NULL ) *errnum = GetLastError();
 
@@ -753,6 +751,8 @@ int c_serial_new( c_serial_port_t** port, c_serial_errnum_t* errnum ) {
 			CloseHandle(new_port->cancel_read_event);
 		if (new_port->overlap.hEvent)
 			CloseHandle(new_port->overlap.hEvent);
+		if (new_port->write_overlap.hEvent)
+			CloseHandle(new_port->write_overlap.hEvent);
 
         free( new_port );
         return CSERIAL_ERROR_CANT_CREATE;
@@ -778,6 +778,7 @@ void c_serial_free( c_serial_port_t* port ) {
 	CloseHandle(port->mutex);
 	CloseHandle(port->cancel_read_event);
 	CloseHandle(port->overlap.hEvent);
+	CloseHandle(port->write_overlap.hEvent);
 #else
 	pthread_mutex_destroy(&(port->mutex));
 #endif
@@ -812,7 +813,9 @@ int c_serial_open( c_serial_port_t* port ) {
 int c_serial_open_keep_settings( c_serial_port_t* port, int keepSettings ) {
     int rc;
     int retval = CSERIAL_OK;
-    CHECK_INVALID_PORT( port );
+
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     if( port->is_open ) 
 		return CSERIAL_ERROR_ALREADY_OPEN;
@@ -911,7 +914,8 @@ int c_serial_open_keep_settings( c_serial_port_t* port, int keepSettings ) {
 }
 
 int c_serial_is_open( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     return port->is_open;
 }
@@ -920,7 +924,9 @@ int c_serial_set_port_name( c_serial_port_t* port,
                             const char* port_name ) {
     size_t port_name_len;
     int port_name_offset;
-    CHECK_INVALID_PORT( port );
+
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     port_name_len = strlen( port_name );
 #ifdef CSERIAL_PLATFORM_WINDOWS
@@ -958,7 +964,8 @@ const char* c_serial_get_port_name( c_serial_port_t* port ) {
 
 int c_serial_set_baud_rate( c_serial_port_t* port,
                             enum CSerial_Baud_Rate baud ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     port->baud_rate = baud;
     if( port->is_open ) {
@@ -971,7 +978,8 @@ int c_serial_set_baud_rate( c_serial_port_t* port,
 enum CSerial_Baud_Rate c_serial_get_baud_rate( c_serial_port_t* port ) {
     enum CSerial_Baud_Rate baud_return;
 
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     if( !port->is_open ) {
         return port->baud_rate;
@@ -1017,7 +1025,8 @@ enum CSerial_Baud_Rate c_serial_get_baud_rate( c_serial_port_t* port ) {
 
 int c_serial_set_data_bits( c_serial_port_t* port,
                             enum CSerial_Data_Bits bits ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     port->data_bits = bits;
     if( port->is_open ) {
@@ -1028,7 +1037,8 @@ int c_serial_set_data_bits( c_serial_port_t* port,
 }
 
 enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
@@ -1064,7 +1074,8 @@ enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
 
 int c_serial_set_stop_bits( c_serial_port_t* port,
                             enum CSerial_Stop_Bits bits ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     port->stop_bits = bits;
     if( port->is_open ) {
@@ -1075,7 +1086,8 @@ int c_serial_set_stop_bits( c_serial_port_t* port,
 }
 
 enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
@@ -1102,7 +1114,8 @@ enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
 
 int c_serial_set_parity( c_serial_port_t* port,
                          enum CSerial_Parity parity ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     port->parity = parity;
     if( port->is_open ) {
@@ -1113,7 +1126,8 @@ int c_serial_set_parity( c_serial_port_t* port,
 }
 
 enum CSerial_Parity c_serial_get_parity( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     {
         GET_SERIAL_PORT_STRUCT( port, newio );
@@ -1148,7 +1162,9 @@ int c_serial_set_flow_control( c_serial_port_t* port,
                                enum CSerial_Flow_Control control ) {
     int ok = CSERIAL_OK;
     enum CSerial_Flow_Control old;
-    CHECK_INVALID_PORT( port );
+
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     old = port->flow;
     port->flow = control;
@@ -1169,8 +1185,10 @@ int c_serial_set_flow_control( c_serial_port_t* port,
 }
 
 enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
-    {
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
+	
+	{
         GET_SERIAL_PORT_STRUCT( port, newio );
 #ifdef CSERIAL_PLATFORM_WINDOWS
         if( newio.fOutX == TRUE && newio.fInX == TRUE ) {
@@ -1207,16 +1225,17 @@ int c_serial_write_data( c_serial_port_t* port,
     int bytes_written;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     SET_RTS_IF_REQUIRED( port );
 
-#ifdef _WIN32
-    if( !WriteFile( port->port, data, *length, NULL, &(port->overlap) ) ) {
+#ifdef CSERIAL_PLATFORM_WINDOWS
+    if( !WriteFile( port->port, data, *length, NULL, &(port->write_overlap) ) ) {
         port->last_errnum = GetLastError();
         if( GetLastError() == ERROR_IO_PENDING ) {
             /* Probably not an error, we're just doing this in an async fasion */
-            if( WaitForSingleObject( port->overlap.hEvent, INFINITE ) == WAIT_FAILED ) {
+            if( WaitForSingleObject( port->write_overlap.hEvent, INFINITE ) == WAIT_FAILED ) {
                 port->last_errnum = GetLastError();
                 LOG_ERROR( LOGGER_NAME, "Unable to write data out: OVERLAPPED operation failed" );
                 return CSERIAL_ERROR_GENERIC;
@@ -1227,18 +1246,18 @@ int c_serial_write_data( c_serial_port_t* port,
         }
     }
 
-	if( GetOverlappedResult( port->port, &(port->overlap), &bytes_written, 1 ) == 0 ){
+	if( GetOverlappedResult( port->port, &(port->write_overlap), &bytes_written, 1 ) == 0 ){
 		LOG_ERROR( LOGGER_NAME, "Unable to write data" );
 		return CSERIAL_ERROR_GENERIC;
 	}
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     bytes_written = write( port->port, data, *length );
     if( bytes_written < 0 ) {
         port->last_errnum = errno;
         LOG_ERROR( LOGGER_NAME, "Unable to write data to serial port" );
         return CSERIAL_ERROR_GENERIC;
     }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 	*length = bytes_written;
 
     CLEAR_RTS_IF_REQUIRED( port );
@@ -1258,12 +1277,13 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 	int bytes_written;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-	CHECK_INVALID_PORT(port);
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
 	SET_RTS_IF_REQUIRED(port);
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
-	if (!WriteFile(port->port, data, *length, NULL, &(port->overlap))) {
+	if (!WriteFile(port->port, data, *length, NULL, &(port->write_overlap))) {
 		port->last_errnum = GetLastError();
 		if (GetLastError() == ERROR_IO_PENDING) {
 			DWORD wait_time = INFINITE;
@@ -1277,7 +1297,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 			}
 
 			/* Probably not an error, we're just doing this in an async fasion */
-			if (WaitForSingleObject(port->overlap.hEvent, wait_time) == WAIT_FAILED) {
+			if (WaitForSingleObject(port->write_overlap.hEvent, wait_time) == WAIT_FAILED) {
 				port->last_errnum = GetLastError();
 				LOG_ERROR(LOGGER_NAME, "Unable to write data out: timeout");
 				return CSERIAL_ERROR_TIMEOUT;
@@ -1289,7 +1309,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 		}
 	}
 
-	if (GetOverlappedResult(port->port, &(port->overlap), &bytes_written, 1) == 0) {
+	if (GetOverlappedResult(port->port, &(port->write_overlap), &bytes_written, 1) == 0) {
 		LOG_ERROR(LOGGER_NAME, "Unable to write data");
 		return CSERIAL_ERROR_GENERIC;
 	}
@@ -1337,18 +1357,18 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 	uint64_t start_timestamp = unix_get_tick_count();
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-	CHECK_INVALID_PORT(port);
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
-	if (data == NULL && lines == NULL) {
+	if (data == NULL && lines == NULL) 
 		return CSERIAL_ERROR_INCORRECT_READ_PARAMS;
-	}
 
 	/* Set read activity flag*/
 	atomic_exchange(&port->is_read_active, 1);
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	ResetEvent(port->cancel_read_event);
-
+	/*
 	wait_objects[0] = port->overlap.hEvent;
 	wait_objects[1] = port->cancel_read_event;
 
@@ -1361,7 +1381,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 	if (wait_result == WAIT_OBJECT_0 + 1) 
 		return CSERIAL_ERROR_CANCELLED;
-
+		*/
 	if (GetCommModemStatus(port->port, &originalControlState) == 0) {
 		LOG_ERROR(LOGGER_NAME, "Unable to get comm modem lines");
 		return -1;
@@ -1397,21 +1417,31 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			}
 
 			SetCommMask(port->port, EV_RXCHAR | EV_CTS | EV_DSR | EV_RING);
-			WaitCommEvent(port->port, &ret, &(port->overlap));
+			if (!WaitCommEvent(port->port, &ret, &(port->overlap))) {
+				int asdf = 1;
+				DWORD last_error = GetLastError();
+				if (last_error == ERROR_IO_PENDING) {
+
+				}
+			}
 			
 			wait_objects[0] = port->overlap.hEvent;
 			wait_objects[1] = port->cancel_read_event;
 
 			wait_result = WaitForMultipleObjects(2, wait_objects, FALSE, wait_time);
 			if (wait_result == WAIT_TIMEOUT) {
+				SetCommMask(port->port, 0);
 				ret_code = CSERIAL_ERROR_TIMEOUT;
 				break;
 			}
 
 			if (wait_result == WAIT_OBJECT_0 + 1) {
+				SetCommMask(port->port, 0);
 				ret_code = CSERIAL_ERROR_CANCELLED;
 				break;
 			}
+
+			int data_rect = 1234;
 		}
 		else {
 			/* Data is available; set the RXCHAR mask so we try to read from the port */
@@ -1771,27 +1801,35 @@ uint64_t start_timestamp = unix_get_tick_count();
 	return ret_code;
 }
 
-c_serial_handle_t c_serial_get_native_handle( c_serial_port_t* port ) {
-#ifdef CSERIAL_PLATFORM_WINDOWS
-	if( port == NULL ){
-		return NULL;
-	}
-#else /*CSERIAL_PLATFORM_WINDOWS*/
-    CHECK_INVALID_PORT( port );
-#endif /*CSERIAL_PLATFORM_WINDOWS*/
-    return port->port;
+int c_serial_get_native_handle( c_serial_port_t* port, c_serial_handle_t* out_handle) {
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
+
+	if (!port->is_open)
+		return CSERIAL_ERROR_NO_PORT;
+
+    if (out_handle)
+	  *out_handle = port->port;
+
+	return CSERIAL_OK;
 }
 
-c_serial_handle_t c_serial_get_poll_handle( c_serial_port_t* port ){
+int c_serial_get_poll_handle(c_serial_port_t* port, c_serial_handle_t* out_handle){
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
+
+	if (!port->is_open)
+		return CSERIAL_ERROR_NO_PORT;
+
 #ifdef CSERIAL_PLATFORM_WINDOWS
-	if( port == NULL ){
-		return NULL;
-	}
-    return port->overlap.hEvent;
+	if (out_handle)
+		*out_handle = port->overlap.hEvent;
 #else /*CSERIAL_PLATFORM_WINDOWS*/
-    CHECK_INVALID_PORT( port );
-    return port->port;
+	if (out_handle)
+		*out_handle = port->port;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
+
+	return CSERIAL_OK;
 }
 
 int c_serial_set_control_line( c_serial_port_t* port,
@@ -1799,10 +1837,11 @@ int c_serial_set_control_line( c_serial_port_t* port,
                                int return_state ) {
     int toSet = 0;
 
-    CHECK_INVALID_PORT( port );
-    if( lines == NULL ) {
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
+
+    if( lines == NULL ) 
         return CSERIAL_ERROR_GENERIC;
-    }
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     if( lines->dtr ) {
@@ -1872,13 +1911,14 @@ int c_serial_set_control_line( c_serial_port_t* port,
 
 int c_serial_get_control_lines( c_serial_port_t* port,
                                 c_serial_control_lines_t* lines ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
-    if( lines == NULL ) {
+    if( lines == NULL ) 
         return CSERIAL_ERROR_GENERIC;
-    }
 
     memset( lines, 0, sizeof( c_serial_control_lines_t ) );
+
     {
 #ifdef CSERIAL_PLATFORM_WINDOWS
         DWORD get_val;
@@ -1946,7 +1986,9 @@ int c_serial_get_control_lines( c_serial_port_t* port,
 
 int c_serial_get_available( c_serial_port_t* port,
                             int* available ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
+
 #ifdef CSERIAL_PLATFORM_WINDOWS
     {
         DWORD comErrors = {0};
@@ -1966,12 +2008,14 @@ int c_serial_get_available( c_serial_port_t* port,
         return CSERIAL_ERROR_GENERIC;
     }
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
-    return CSERIAL_OK;
+
+	return CSERIAL_OK;
 }
 
 int c_serial_set_serial_line_change_flags( c_serial_port_t* port,
         int flags ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     port->line_flags = flags;
 
@@ -1979,23 +2023,22 @@ int c_serial_set_serial_line_change_flags( c_serial_port_t* port,
 }
 
 int c_serial_get_serial_line_change_flags( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     return port->line_flags;
 }
 
 void c_serial_set_user_data( c_serial_port_t* port, void* data ) {
-    if( port == NULL ) {
-        return;
-    }
-
+	if (port == NULL)
+		return;
+	
     port->user_data = data;
 }
 
 void* c_serial_get_user_data( c_serial_port_t* port ) {
-    if( port == NULL ) {
+    if(port == NULL)
         return NULL;
-    }
 
     return port->user_data;
 }
@@ -2045,8 +2088,12 @@ void c_serial_stderr_log_function(const char* logger_name,
     fflush( stderr );
 }
 
+#define CSERIAL_MAX_PORTS 512
+
 c_serial_errnum_t c_serial_get_last_native_errnum( c_serial_port_t* port ) {
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
+
     return port->last_errnum;
 }
 
@@ -2055,15 +2102,15 @@ const char** c_serial_get_serial_ports_list() {
     int port_names_size;
 
     port_names_size = 0;
-    port_names = malloc( sizeof( char* ) * 512 );
-	memset( port_names, 0, sizeof( char* ) * 512 );
+    port_names = malloc( sizeof( char* ) * CSERIAL_MAX_PORTS);
+	memset( port_names, 0, sizeof( char* ) * CSERIAL_MAX_PORTS);
 #ifdef CSERIAL_PLATFORM_WINDOWS
     {
         int x;
         /* Brute force, baby! */
         char* port_to_open = malloc( 11 );
         HANDLE* port;
-        for( x = 0; x <= 255; x++ ) {
+        for( x = 0; x <= CSERIAL_MAX_PORTS; x++ ) {
             _snprintf_s( port_to_open, 11, 11, "\\\\.\\COM%d", x );
             port = CreateFile( port_to_open, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0 );
             if( port != INVALID_HANDLE_VALUE ||
@@ -2118,7 +2165,7 @@ const char** c_serial_get_serial_ports_list() {
                 continue;
             }
 
-            if( isatty( fd ) && port_names_size < 512 ) {
+            if( isatty( fd ) && port_names_size < CSERIAL_MAX_PORTS) {
                 port_names[ port_names_size ] = malloc( strlen( entry->d_name ) + 6 );
                 memcpy( port_names[ port_names_size ], "/dev/", 5 );
                 memcpy( port_names[ port_names_size ] + 5, entry->d_name, strlen( entry->d_name ) + 1 );
@@ -2140,7 +2187,7 @@ const char** c_serial_get_serial_ports_list() {
 void c_serial_free_serial_ports_list( const char** port_list ) {
     char** real_port_list = (char**)port_list;
     int x;
-    for( x = 0; x < 512; x++ ) {
+    for( x = 0; x < CSERIAL_MAX_PORTS; x++ ) {
         if( real_port_list[ x ] == NULL ) {
             break;
         }
@@ -2154,7 +2201,9 @@ int c_serial_set_rts_control( c_serial_port_t* port,
                               enum CSerial_RTS_Handling handling ){
     int ok = CSERIAL_OK;
     enum CSerial_RTS_Handling old;
-    CHECK_INVALID_PORT( port );
+
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     old = port->rs485;
     port->rs485 = handling;
@@ -2176,13 +2225,15 @@ int c_serial_set_rts_control( c_serial_port_t* port,
 }
 
 enum CSerial_RTS_Handling c_serial_get_rts_control( c_serial_port_t* port ){
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
     return port->rs485;
 }
 
 int c_serial_flush( c_serial_port_t* port ){
-    CHECK_INVALID_PORT( port );
+	if (port == NULL)
+		return CSERIAL_ERROR_INVALID_PORT;
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     if( FlushFileBuffers( port->port ) == 0 ){
