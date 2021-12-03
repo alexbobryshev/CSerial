@@ -51,7 +51,7 @@ static long atomic_exchange(long volatile* variable, long new_val) {
 }
 
 static int atomic_compare_exchange(long volatile* variable, long new_val, long* expected_val) {
-	return __atomic_compare_exchange_n(variable, expected_val, new_val, true, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+	return __atomic_compare_exchange_n(variable, expected_val, new_val, 1, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 
 #elif CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_WINDOWS

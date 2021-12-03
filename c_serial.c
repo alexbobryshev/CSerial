@@ -53,6 +53,7 @@
 #endif /*CSERIAL_PLATFORM_ANDROID*/
 
 #include <sys/ioctl.h>
+#include <sys/times.h>
 #include <errno.h>
 #include <poll.h>
 
@@ -218,7 +219,7 @@ static int c_serial_get_serial_port_struct(c_serial_port_t* cserial_port, serial
 
 
 static uint64_t c_serial_get_tick_count() {
-	tms tm;
+	struct tms tm;
 	clock_t time = times(&tm);
 	long res = sysconf(_SC_CLK_TCK);
 	uint64_t milliseconds64 = ((uint64_t)time) * 1000ULL;
@@ -1428,7 +1429,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		timeout_time.tv_sec += timeout_msec / 1000;
 		timeout_time.tv_nsec += (timeout_msec % 1000) * 1000;
 
-		if (pthread_mutex_timedlock(&lock, &timeout_time) != 0) {
+		if (pthread_mutex_timedlock(&(port->mutex), &timeout_time) != 0) {
 			return CSERIAL_ERROR_TIMEOUT;
 		}
 	}
