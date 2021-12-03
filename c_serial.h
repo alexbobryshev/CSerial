@@ -129,41 +129,6 @@ struct c_serial_control_lines {
 };
 typedef struct c_serial_control_lines c_serial_control_lines_t;
 
-/**
- * Enum for baud rate
- */
-enum CSerial_Baud_Rate {
-    /** Not supported by Windows */
-    CSERIAL_BAUD_0 = 0,
-    /** Not supported by Windows */
-    CSERIAL_BAUD_50 = 50,
-    /** Not supported by Windows */
-    CSERIAL_BAUD_100 = 100,
-
-    CSERIAL_BAUD_110 = 110,
-
-    /** Not supported by Windows */
-    CSERIAL_BAUD_134 = 134,
-    /** Not supported by Windows */
-    CSERIAL_BAUD_150 = 150,
-    /** Not supported by Windows */
-    CSERIAL_BAUD_200 = 200,
-    
-    CSERIAL_BAUD_300 = 300,
-    CSERIAL_BAUD_600 = 600,
-    CSERIAL_BAUD_1200 = 1200,
-
-    /** Not supported by Windows */
-    CSERIAL_BAUD_1800 = 1800,
- 
-    CSERIAL_BAUD_2400 = 2400,
-    CSERIAL_BAUD_4800 = 4800,
-    CSERIAL_BAUD_9600 = 9600,
-    CSERIAL_BAUD_19200 = 19200,
-    CSERIAL_BAUD_38400 = 38400,
-    CSERIAL_BAUD_115200 = 115200
-}; 
-
 enum CSerial_Data_Bits{
     CSERIAL_BITS_5 = 5,
     CSERIAL_BITS_6,
@@ -274,15 +239,14 @@ CSERIAL_EXPORT const char* c_serial_get_port_name( c_serial_port_t* port );
  * Set the baud rate of the serial port
  */
 CSERIAL_EXPORT int c_serial_set_baud_rate( c_serial_port_t* port, 
-                                           enum CSerial_Baud_Rate baud );
+                                           int baud );
 
 /**
  * Get the baud rate of the serial port.  Note that this function returns 
  * a cached value if the port is not open, otherwise it reads directly
  * from the port and returns the proper value.
  */
-CSERIAL_EXPORT enum CSerial_Baud_Rate c_serial_get_baud_rate( 
-                                               c_serial_port_t* port );
+CSERIAL_EXPORT int c_serial_get_baud_rate( c_serial_port_t* port );
 
 /**
  * Set the number of data bits.

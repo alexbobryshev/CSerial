@@ -1,5 +1,6 @@
 /*
    Copyright 2016 rm5248
+   updated 2021 alexb@clever.team
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -20,125 +21,15 @@
 #define LOGGER_NAME "cserial"
 #include "simplelogger.h"
 
-/*
- * Platform detect
- */
-#if defined(unix) || defined(__unix__) || defined(__unix)
-#define CSERIAL_PLATFORM_POSIX_BASED
+#include "c_serial_pdetect.h"
 
-#if defined(__CYGWIN__) && !defined(_WIN32)
-#define CSERIAL_PLATFORM_CYGWIN
-#endif  /* defined(__CYGWIN__) && !defined(_WIN32)*/
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <stdio.h>
 
-#if !defined(__linux__) && !defined(__linux) && !defined(linux) && !defined(__sun__) && \
-    !defined(__sun) && !defined(__CYGWIN__) && !defined(__APPLE__) && !defined(_WIN32)
-#define CSERIAL_PLATFORM_UNIX
-#include <sys/param.h>
-
-#if defined(BSD)
-#define CSERIAL_PLATFORM_BSD
-#endif  /* BSD*/
-
-#if defined(__FreeBSD__)
-#define CSERIAL_PLATFORM_FREEBSD
-#endif  /*__FreeBSD__*/
-
-#if defined(__NetBSD__)
-#define CSERIAL_PLATFORM_NETBSD
-#endif  /*__NetBSD__*/
-
-#if defined(__DragonFly__)
-#define CSERIAL_PLATFORM_DRAGONFLYBSD
-#endif  /*__DragonFly__*/
-
-#endif  /*! defined(__linux__) && !defined(__linux) && !defined(linux) &&
- ! !defined(__sun__) && !defined(__sun) && !defined(__CYGWIN__) &&
- ! !defined(__APPLE__) && !defined(_WIN32)*/
-
-#endif  /* defined(unix) || defined(__unix__) || defined(__unix) */
-
-#if !defined(CSERIAL_PLATFORM_UNIX) && defined(CSERIAL_PLATFORM_POSIX_BASED)
-#if defined(__linux__) || defined(__linux) || defined(__gnu_linux) || defined(linux)
-#define CSERIAL_PLATFORM_LINUX
-#endif  /* defined(__linux__) || defined(__linux) || defined(__gnu_linux) ||
-           defined(linux)*/
-#endif  /*! defined CSERIAL_PLATFORM_UNIX && defined(CSERIAL_PLATFORM_POSIX_BASED)*/
-
-
-#if defined(__APPLE__) && defined(__MACH__)
-#define CSERIAL_PLATFORM_POSIX_BASED
-#define CSERIAL_PLATFORM_MAC
-
-#include <TargetConditionals.h>
-#if TARGET_IPHONE_SIMULATOR == 1
-#define CSERIAL_PLATFORM_IPHONE
-#define CSERIAL_PLATFORM_IPHONE_SIMULATOR
-#elif TARGET_OS_IPHONE == 1
-#define CSERIAL_PLATFORM_IPHONE
-#elif TARGET_OS_MAC == 1
-#define CSERIAL_PLATFORM_MACOSX
-#endif /*TARGET_IPHONE_SIMULATOR == 1*/
-
-#endif  /* defined(__APPLE__) && defined(__MACH__) */
-
-#if defined(CSERIAL_PLATFORM_POSIX_BASED) && \
-    (defined(__sun__) || defined(__sun) || defined(__SunOS) || defined(sun))
-#define CSERIAL_PLATFORM_SOLARIS
-#endif  /* defined(CSERIAL_PLATFORM_POSIX_BASED) && (defined(__sun__) || defined(__sun) ||
-		    defined(__SunOS) || defined(sun)) */
-
-#ifdef _WIN32
-#undef CSERIAL_PLATFORM_POSIX_BASED  /* it may be set if you use CYGWIN with GCC for Windows */
-#undef CSERIAL_PLATFORM_UNIX
-#define CSERIAL_PLATFORM_WINDOWS
-#endif  /*_WIN32*/
-
-#ifdef __ANDROID__
-#define CSERIAL_PLATFORM_ANDROID
-#endif /*__ANDROID__*/
-
-
-
-/* 
- * Compiler detect 
- */
-
-#ifdef _MSC_VER
-#define CSERIAL_COMPILER_MSVC
-#endif  /*_MSC_VER*/
-
-#ifdef __GNUC__
-#define CSERIAL_COMPILER_GCC
-#endif  /*__GNUC__*/
-
-#ifdef __IBMCPP__
-#define CSERIAL_COMPILER_IBM
-#endif  /*__IBMCPP__*/
-
-#if defined(__ICC) || defined(__INTEL_COMPILER)
-#define CSERIAL_COMPILER_ICC
-#endif  /* defined(__ICC) || defined(__INTEL_COMPILER) */
-
-#if defined(__SUNPRO_CC) || defined(__SUNPRO_C)
-#define CSERIAL_COMPILER_SOLARIS
-#endif  /* defined(__SUNPRO_CC) || defined(__SUNPRO_C) */
-
-#if defined(__MINGW32__) || defined(__MINGW64__)
-#define CSERIAL_COMPILER_MINGW
-#endif  /* defined(__MINGW32__) || defined(__MINGW64__) */
-
-#if defined(__clang__)
-#define CSERIAL_COMPILER_CLANG
-#endif /*__clang__*/
-
-#if defined(__xlc__)
-#define CSERIAL_COMPILER_XLC
-#endif /*__xlc__*/
-
-#if defined(CSERIAL_COMPILER_GCC) || defined(CSERIAL_COMPILER_CLANG) || defined(CSERIAL_COMPILER_XLC)
-#define CSERIAL_COMPILER_GCC_COMPAT
-#endif /*CSERIAL_COMPILER_GCC || CSERIAL_COMPILER_CLANG || CSERIAL_COMPILER_XLC*/
-
+#include "c_serial.h"
+#include "c_serial_atomic.h"
 
 /*
  * Includes
@@ -171,118 +62,6 @@
 
 #endif /*CSERIAL_PLATFORM_POSIX_BASED*/
 
-/*
- * Atomic implementation
- */
-#define CSERIAL_ATOMIC_IMPL_GCC 1
-#define CSERIAL_ATOMIC_IMPL_WINDOWS 2
-#define CSERIAL_ATOMIC_IMPL_NOATOMIC 4
-
-/* User can override value LOG_ATOMIC_IMPL by himself */
-#if !defined(CSERIAL_ATOMIC_IMPL)
-#if defined (CSERIAL_COMPILER_GCC_COMPAT)
-#define CSERIAL_ATOMIC_IMPL CSERIAL_ATOMIC_IMPL_GCC
-#elif defined(CSERIAL_PLATFORM_WINDOWS)
-#define CSERIAL_ATOMIC_IMPL CSERIAL_ATOMIC_IMPL_WINDOWS
-#else
-#define CSERIAL_ATOMIC_IMPL CSERIAL_ATOMIC_IMPL_NOATOMIC
-#endif
-
-#endif /*!defined(CSERIAL_ATOMIC_IMPL)*/
-
-#if CSERIAL_ATOMIC_IMPL==LOG_ATOMIC_IMPL_WINDOWS
-long _InterlockedIncrement(long volatile*);
-long _InterlockedDecrement(long volatile*);
-long __cdecl _InterlockedExchange(long volatile*, long);
-long __cdecl _InterlockedCompareExchange(long volatile*, long, long);
-
-#pragma intrinsic(_InterlockedIncrement)
-#pragma intrinsic(_InterlockedDecrement)
-#pragma intrinsic(_InterlockedCompareExchange)
-#endif  /*end of LOG_ATOMIC_IMPL==LOG_ATOMIC_IMPL_WINDOWS*/
-
-typedef volatile long atomic_long_type;
-
-#if CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_GCC
-/* GCC implementation*/
-static long atomic_increment(long volatile* variable) {
-	return __atomic_add_fetch(variable, 1, __ATOMIC_SEQ_CST);
-}
-
-static long atomic_decrement(long volatile* variable) {
-	return __atomic_sub_fetch(variable, 1, __ATOMIC_SEQ_CST);
-}
-
-static long atomic_exchange(long volatile* variable, long new_val) {
-	return __atomic_exchange_n(variable, new_val, __ATOMIC_SEQ_CST);
-}
-
-static bool atomic_compare_exchange(long volatile* variable, long new_val, long* expected_val) {
-	return __atomic_compare_exchange_n(variable, expected_val, new_val, true, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-}
-
-#elif CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_WINDOWS
-/* Windows implementation */
-static long atomic_increment(long volatile* variable) {
-	return _InterlockedIncrement(variable);
-}
-
-static long atomic_decrement(long volatile* variable) {
-	return _InterlockedDecrement(variable);
-}
-
-static long atomic_exchange(long volatile* variable, long new_val) {
-	return _InterlockedExchange(variable, new_val);
-}
-
-static int atomic_compare_exchange(long volatile* variable, long new_val, long* expected_val) {
-	long old_val = _InterlockedCompareExchange(variable, new_val, *expected_val);
-	int ret = old_val == *expected_val;
-	*expected_val = old_val;
-	return ret;
-}
-
-#elif CSERIAL_ATOMIC_IMPL==CSERIAL_ATOMIC_IMPL_NOATOMIC
-
-/* NO ATOMIC SUPPORT, JUST EMULATE OPERATIONS */
-#pragma warning("Atomic operations are not supported!")
-
-static long atomic_increment(long volatile* variable) {
-	long old_val = *variable;
-	*variable++;
-	return old_val;
-}
-
-static long atomic_decrement(long volatile* variable) {
-	long old_val = *variable;
-	*variable--;
-	return old_val;
-}
-
-static long atomic_exchange(long volatile* variable, long new_val) {
-	long old_val = *variable;
-	return *variable;
-}
-
-static bool atomic_compare_exchange(long volatile* variable, long new_val, long* expected_val) {
-	long old_val = *variable;
-	if (old_val == *expected_val)
-      *variable = new_val;
-
-	int ret = old_val == *expected_val;
-	*expected_val = old_val;
-
-	return ret;
-}
-
-#endif /*end of CSERIAL_ATOMIC_IMPL*/
-
-static long atomic_read(long volatile* variable) {
-	long exp_val = 0;
-	atomic_compare_exchange(variable, 0, &exp_val);
-	return exp_val;
-}
-
 
 /*
  * Platform-specific CSERIAL definitions
@@ -293,24 +72,24 @@ static long atomic_read(long volatile* variable) {
 #define SPEED_SWITCH(SPD,io) case SPD: io.BaudRate = CBR_##SPD; break;
 #define GET_SPEED_SWITCH(SPD,io) case CBR_##SPD: baud_return = SPD; break;
 
-#define GET_SERIAL_PORT_STRUCT( cserial_port, io_name ) DCB io_name = {0};\
+/*#define GET_SERIAL_PORT_STRUCT( cserial_port, io_name ) \
+       DCB io_name = {0};\
        io_name.DCBlength = sizeof( io_name ); \
        if (!GetCommState( cserial_port->port, &io_name ) ) { \
 	     cserial_port->last_errnum = GetLastError();\
          printf("bad get comm line %d\n", __LINE__);\
          return -1;\
        }
-#define SET_SERIAL_PORT_STRUCT( cserial_port, io_name ) 	if( !SetCommState( cserial_port->port, &io_name ) ){\
+#define SET_SERIAL_PORT_STRUCT( cserial_port, io_name ) \
+    if( !SetCommState( cserial_port->port, &io_name ) ){\
 		cserial_port->last_errnum = GetLastError();\
         printf("bad set comm\n");\
         return -1;\
     }
-
+	*/
+typedef DCB serial_io_type;
 typedef HANDLE c_serial_mutex_t;
 
-static uint64_t c_serial_get_tick_count() {
-	return GetTickCount64();
-}
 
 #else /*CSERIAL_PLATFORM_WINDOWS*/
 
@@ -326,15 +105,117 @@ static uint64_t c_serial_get_tick_count() {
 
 #define SPEED_SWITCH(SPD,io) case SPD: cfsetospeed( &io, B##SPD ); cfsetispeed( &io, B##SPD ); break;
 #define GET_SPEED_SWITCH(SPD,io) case B##SPD: baud_return = SPD; break;
-#define GET_SERIAL_PORT_STRUCT( cserial_port, io_name )	struct termios io_name; \
+/*#define GET_SERIAL_PORT_STRUCT( cserial_port, io_name )	struct termios io_name; \
         if( tcgetattr( cserial_port->port, &io_name ) < 0 ){ \
             return -1; \
         }
-#define SET_SERIAL_PORT_STRUCT( cserial_port, io_name ) 	if( tcsetattr( cserial_port->port, TCSANOW, &io_name ) < 0 ){\
+		*/
+typedef struct termios serial_io_type;
+typedef pthread_mutex_t c_serial_mutex_t;
+/*
+#define SET_SERIAL_PORT_STRUCT( cserial_port, io_name ) \
+    if( tcsetattr( cserial_port->port, TCSANOW, &io_name ) < 0 ){\
         return -1;\
     }
+	*/
 
-typedef pthread_mutex_t c_serial_mutex_t;
+
+#endif /* CSERIAL_PLATFORM_WINDOWS */
+
+
+/*
+ * Struct Definitions
+ */
+
+ /* \cond */
+struct c_serial_port {
+	c_serial_handle_t port;
+	c_serial_mutex_t mutex;
+	c_serial_errnum_t last_errnum;
+	char* port_name;
+	int baud_rate;
+	enum CSerial_Data_Bits data_bits;
+	enum CSerial_Stop_Bits stop_bits;
+	enum CSerial_Parity parity;
+	enum CSerial_Flow_Control flow;
+	enum CSerial_RTS_Handling rs485;
+	int rs485_is_software;
+	void* user_data;
+	int is_open;
+	int line_flags;
+
+	atomic_long_type is_read_active;
+
+#ifdef CSERIAL_PLATFORM_POSIX_BASED
+	atomic_long_type cancel_read_event;
+#endif /*CSERIAL_PLATFORM_POSIX_BASED*/
+
+#ifdef CSERIAL_PLATFORM_WINDOWS
+	/* Windows-specific variables that we need to keep track of */
+	int winDTR;
+	int winRTS;
+	OVERLAPPED read_overlap;
+	OVERLAPPED write_overlap;
+	HANDLE cancel_read_event;
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
+};
+/* \endcond */
+
+
+
+/*
+ * Platform specific functions
+ */
+#ifdef CSERIAL_PLATFORM_WINDOWS
+static void c_serial_init_serial_io(serial_io_type* io) {
+	memset(io, 0, sizeof(serial_io_type));
+}
+
+static int c_serial_set_serial_port_struct(c_serial_port_t* cserial_port, serial_io_type* io) {
+	if (!SetCommState(cserial_port->port, io)) {
+		cserial_port->last_errnum = GetLastError();
+		printf("bad set comm\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int c_serial_get_serial_port_struct(c_serial_port_t* cserial_port, serial_io_type* io) {
+	io->DCBlength = sizeof(serial_io_type);
+	if (!GetCommState(cserial_port->port, io)) {
+		cserial_port->last_errnum = GetLastError();
+		printf("bad get comm line %d\n", __LINE__);
+		return -1;
+	}
+
+	return 0;
+}
+
+static uint64_t c_serial_get_tick_count() {
+	return GetTickCount64();
+}
+
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+static void c_serial_init_serial_io(serial_io_type* io) {
+	memset(io, 0, sizeof(serial_io_type));
+}
+
+static int c_serial_set_serial_port_struct(c_serial_port_t* cserial_port, serial_io_type* io) {
+	if (tcsetattr(cserial_port->port, TCSANOW, io) < 0) {
+		return -1;
+	}
+	return 0;
+}
+
+static int c_serial_get_serial_port_struct(c_serial_port_t* cserial_port, serial_io_type* io) {
+	if (tcgetattr(cserial_port->port, io) < 0) {
+		return -1;
+	}
+	return 0;
+}
+
+
 
 static uint64_t c_serial_get_tick_count() {
 	tms tm;
@@ -345,14 +226,8 @@ static uint64_t c_serial_get_tick_count() {
 	return milliseconds64 / res;
 }
 
-#endif /* CSERIAL_PLATFORM_WINDOWS */
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
-#include <stdio.h>
-
-#include "c_serial.h"
 
 /*
  * Local defines
@@ -377,43 +252,6 @@ static uint64_t c_serial_get_tick_count() {
 
 static simplelogger_log_function global_log_function = NULL;
 
-/*
- * Struct Definitions
- */
-
-/* \cond */
-struct c_serial_port {
-    c_serial_handle_t port;
-    c_serial_mutex_t mutex;
-    c_serial_errnum_t last_errnum;
-    char* port_name;
-    enum CSerial_Baud_Rate baud_rate;
-    enum CSerial_Data_Bits data_bits;
-    enum CSerial_Stop_Bits stop_bits;
-    enum CSerial_Parity parity;
-    enum CSerial_Flow_Control flow;
-    enum CSerial_RTS_Handling rs485;
-    int rs485_is_software;
-    void* user_data;
-    int is_open;
-    int line_flags;
-	
-	atomic_long_type is_read_active;
-
-#ifdef CSERIAL_PLATFORM_POSIX_BASED
-	atomic_long_type cancel_read_event;
-#endif /*CSERIAL_PLATFORM_POSIX_BASED*/
-
-#ifdef CSERIAL_PLATFORM_WINDOWS
-    /* Windows-specific variables that we need to keep track of */
-    int winDTR;
-    int winRTS;
-    OVERLAPPED read_overlap;
-	OVERLAPPED write_overlap;
-	HANDLE cancel_read_event;
-#endif /*CSERIAL_PLATFORM_WINDOWS*/
-};
-/* \endcond */
 
 /*
  * Local Methods
@@ -421,9 +259,17 @@ struct c_serial_port {
 
 static int clear_rts( c_serial_port_t* desc ){
 #ifdef CSERIAL_PLATFORM_WINDOWS
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+	  return CSERIAL_ERROR_GENERIC;
+//    GET_SERIAL_PORT_STRUCT( desc, newio );
     newio.fRtsControl = RTS_CONTROL_TOGGLE;
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+	  return CSERIAL_ERROR_GENERIC;
+    //SET_SERIAL_PORT_STRUCT( desc, newio );
+
 #elif defined( HAVE_LINUX_SERIAL )
     struct serial_rs485 rs485conf;
     if( ioctl( desc->port, TIOCGRS485, &rs485conf ) < 0 ){
@@ -451,9 +297,18 @@ static int clear_rts( c_serial_port_t* desc ){
 
 static int set_rts_hw( c_serial_port_t* desc ){
 #ifdef CSERIAL_PLATFORM_WINDOWS
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+
+//    GET_SERIAL_PORT_STRUCT( desc, newio );
     newio.fRtsControl = RTS_CONTROL_TOGGLE;
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+
+//    SET_SERIAL_PORT_STRUCT( desc, newio );
 #elif defined( HAVE_LINUX_SERIAL )
     struct serial_rs485 rs485conf;
     if( ioctl( desc->port, TIOCGRS485, &rs485conf ) < 0 ){
@@ -494,7 +349,11 @@ static int set_rts_settings( c_serial_port_t* desc ){
 }
 
 static int set_raw_input( c_serial_port_t* port ) {
-    GET_SERIAL_PORT_STRUCT( port, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(port, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+	//GET_SERIAL_PORT_STRUCT( port, newio );
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     newio.fBinary = TRUE;
@@ -532,13 +391,19 @@ static int set_raw_input( c_serial_port_t* port ) {
     newio.c_cc[VMIN] = 1;
 #endif /* CSERIAL_PLATFORM_WINDOWS */
 
-    SET_SERIAL_PORT_STRUCT( port, newio );
+	if (c_serial_set_serial_port_struct(port, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+	//SET_SERIAL_PORT_STRUCT( port, newio );
 
     return CSERIAL_OK;
 }
 
 static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+	//GET_SERIAL_PORT_STRUCT( desc, newio );
 
     switch( baud_rate ) {
 #ifndef CSERIAL_PLATFORM_WINDOWS
@@ -569,7 +434,9 @@ static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
         SPEED_SWITCH(115200,newio);
     }
 
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -579,7 +446,12 @@ static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
  */
 static int set_data_bits( c_serial_port_t* desc,
                           enum CSerial_Data_Bits data_bits ) {
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+    //GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     newio.ByteSize = data_bits;
@@ -596,7 +468,9 @@ static int set_data_bits( c_serial_port_t* desc,
     }
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -606,7 +480,12 @@ static int set_data_bits( c_serial_port_t* desc,
  */
 static int set_stop_bits( c_serial_port_t* desc,
                           enum CSerial_Stop_Bits stop_bits ) {
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+    //GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     if( stop_bits == CSERIAL_STOP_BITS_1 ) {
@@ -622,7 +501,9 @@ static int set_stop_bits( c_serial_port_t* desc,
     }
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -631,9 +512,14 @@ static int set_stop_bits( c_serial_port_t* desc,
  * @param parity 0 for no parity, 1 for odd parity, 2 for even parity
  */
 static int set_parity( c_serial_port_t* desc, enum CSerial_Parity parity ) {
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+    //GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
 
-#ifdef _WIN32
+
+#ifdef CSERIAL_PLATFORM_WINDOWS
     if( parity == CSERIAL_PARITY_NONE ) {
         newio.Parity = NOPARITY;
     } else if( parity == CSERIAL_PARITY_ODD ) {
@@ -641,7 +527,7 @@ static int set_parity( c_serial_port_t* desc, enum CSerial_Parity parity ) {
     } else if( parity == CSERIAL_PARITY_EVEN ) {
         newio.Parity = EVENPARITY;
     }
-#else
+#else /*CSERIAL_PLATFORM_WINDOWS*/
     newio.c_iflag &= ~IGNPAR;
     newio.c_cflag &= ~( PARODD | PARENB );
     if( parity == CSERIAL_PARITY_NONE ) {
@@ -651,9 +537,12 @@ static int set_parity( c_serial_port_t* desc, enum CSerial_Parity parity ) {
     } else if( parity == CSERIAL_PARITY_EVEN ) {
         newio.c_cflag |= PARENB;
     }
-#endif
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+
+	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -682,7 +571,11 @@ static int set_flow_control( c_serial_port_t* desc,
                              enum CSerial_RTS_Handling rts_handling ) {
     int rc;
     int status = CSERIAL_OK;
-    GET_SERIAL_PORT_STRUCT( desc, newio );
+    //GET_SERIAL_PORT_STRUCT( desc, newio );
+	serial_io_type newio;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
 
     rc = check_rts_handling( desc );
     if( rc != CSERIAL_OK ){
@@ -718,7 +611,10 @@ static int set_flow_control( c_serial_port_t* desc,
     }
 #endif /* CSERIAL_PLATFORM_WINDOWS */
 
-    SET_SERIAL_PORT_STRUCT( desc, newio );
+	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
+
+	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     status = set_rts_settings( desc );
 
@@ -743,7 +639,7 @@ int c_serial_new( c_serial_port_t** port, c_serial_errnum_t* errnum ) {
 
     /* Clear our memory and set some sane defaults */
     memset( new_port, 0, sizeof( struct c_serial_port ) );
-    new_port->baud_rate = CSERIAL_BAUD_9600;
+    new_port->baud_rate = 9600;
     new_port->data_bits = CSERIAL_BITS_8;
     new_port->stop_bits = CSERIAL_STOP_BITS_1;
     new_port->parity = CSERIAL_PARITY_NONE;
@@ -981,7 +877,7 @@ const char* c_serial_get_port_name( c_serial_port_t* port ) {
 }
 
 int c_serial_set_baud_rate( c_serial_port_t* port,
-                            enum CSerial_Baud_Rate baud ) {
+                            int baud ) {
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
@@ -993,8 +889,8 @@ int c_serial_set_baud_rate( c_serial_port_t* port,
     return CSERIAL_OK;
 }
 
-enum CSerial_Baud_Rate c_serial_get_baud_rate( c_serial_port_t* port ) {
-    enum CSerial_Baud_Rate baud_return;
+int c_serial_get_baud_rate( c_serial_port_t* port ) {
+    int baud_return;
 
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
@@ -1004,7 +900,12 @@ enum CSerial_Baud_Rate c_serial_get_baud_rate( c_serial_port_t* port ) {
     }
 
     {
-        GET_SERIAL_PORT_STRUCT( port, newio );
+		serial_io_type newio;
+		c_serial_init_serial_io(&newio);
+		if (c_serial_get_serial_port_struct(port, &newio) < 0)
+			return CSERIAL_ERROR_GENERIC;
+
+        //GET_SERIAL_PORT_STRUCT( port, newio );
 #ifdef CSERIAL_PLATFORM_WINDOWS
         GetCommState( port->port, &newio );
         switch( newio.BaudRate ) {
@@ -1059,8 +960,12 @@ enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
 		return CSERIAL_ERROR_INVALID_PORT;
 
     {
-        GET_SERIAL_PORT_STRUCT( port, newio );
-
+//        GET_SERIAL_PORT_STRUCT( port, newio );
+		serial_io_type newio;
+		c_serial_init_serial_io(&newio);
+		if (c_serial_get_serial_port_struct(port, &newio) < 0)
+			return CSERIAL_ERROR_GENERIC;
+		
 #ifdef CSERIAL_PLATFORM_WINDOWS
         switch( newio.ByteSize ) {
         case 5:
@@ -1108,7 +1013,12 @@ enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
 		return CSERIAL_ERROR_INVALID_PORT;
 
     {
-        GET_SERIAL_PORT_STRUCT( port, newio );
+        //GET_SERIAL_PORT_STRUCT( port, newio );
+		serial_io_type newio;
+		c_serial_init_serial_io(&newio);
+		if (c_serial_get_serial_port_struct(port, &newio) < 0)
+			return CSERIAL_ERROR_GENERIC;
+
 #ifdef CSERIAL_PLATFORM_WINDOWS
         port->stop_bits = newio.StopBits;
         if( newio.StopBits == 1 ) {
@@ -1148,7 +1058,12 @@ enum CSerial_Parity c_serial_get_parity( c_serial_port_t* port ) {
 		return CSERIAL_ERROR_INVALID_PORT;
 
     {
-        GET_SERIAL_PORT_STRUCT( port, newio );
+        //GET_SERIAL_PORT_STRUCT( port, newio );
+		serial_io_type newio;
+		c_serial_init_serial_io(&newio);
+		if (c_serial_get_serial_port_struct(port, &newio) < 0)
+			return CSERIAL_ERROR_GENERIC;
+
 #ifdef CSERIAL_PLATFORM_WINDOWS
         if( newio.Parity == NOPARITY ) {
             return 0;
@@ -1207,7 +1122,12 @@ enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
 		return CSERIAL_ERROR_INVALID_PORT;
 	
 	{
-        GET_SERIAL_PORT_STRUCT( port, newio );
+        //GET_SERIAL_PORT_STRUCT( port, newio );
+		serial_io_type newio;
+		c_serial_init_serial_io(&newio);
+		if (c_serial_get_serial_port_struct(port, &newio) < 0)
+			return CSERIAL_ERROR_GENERIC;
+
 #ifdef CSERIAL_PLATFORM_WINDOWS
         if( newio.fOutX == TRUE && newio.fInX == TRUE ) {
             return 2;
@@ -1290,7 +1210,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 	int timeout_msec) {
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD bytes_written;
-	ULONGLONG start_timestamp = GetTickCount64();
+	ULONGLONG start_timestamp = c_serial_get_tick_count();
 #else /*CSERIAL_PLATFORM_WINDOWS*/
 	int bytes_written;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
@@ -1307,7 +1227,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 			DWORD wait_time = INFINITE;
 
 			if (timeout_msec >= 0) {
-				DWORD time_elapsed = (DWORD)(GetTickCount64() - start_timestamp);
+				DWORD time_elapsed = (DWORD)(c_serial_get_tick_count() - start_timestamp);
 				if (time_elapsed >= (DWORD)timeout_msec)
 					return CSERIAL_ERROR_TIMEOUT;
 
@@ -1411,7 +1331,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			 * This could be the serial lines changing state, or it could be some data
 			 * coming into the system.
 			 */
-			DWORD time_elapsed = (DWORD)(GetTickCount64() - start_timestamp);
+			DWORD time_elapsed = (DWORD)(c_serial_get_tick_count() - start_timestamp);
 			DWORD wait_time = INFINITE;
 
 			if (timeout_msec >= 0) {
@@ -1717,7 +1637,7 @@ int c_serial_read_cancel(c_serial_port_t* port, int timeout_msec) {
 
 	int ret_code = CSERIAL_OK;
 #ifdef CSERIAL_PLATFORM_WINDOWS
-	ULONGLONG start_timestamp = GetTickCount64();
+	ULONGLONG start_timestamp = c_serial_get_tick_count();
 #else /*CSERIAL_PLATFORM_WINDOWS*/
 uint64_t start_timestamp = unix_get_tick_count();
 #endif

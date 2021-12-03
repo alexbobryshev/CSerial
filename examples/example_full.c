@@ -15,12 +15,14 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <cserial/c_serial.h>
+
+#define CSERIAL_STATIC
+#include <c_serial.h>
 
 /**
  */
 
-int main( int argc, char** argv ){
+int _xmain( int argc, char** argv ){
     c_serial_port_t* m_port;
     c_serial_control_lines_t m_lines;
     int status;
@@ -74,7 +76,7 @@ int main( int argc, char** argv ){
     /*
      * Set various serial port settings.  These are the default.
      */
-    c_serial_set_baud_rate( m_port, CSERIAL_BAUD_9600 );
+    c_serial_set_baud_rate( m_port, 115200 /*9600*/ );
     c_serial_set_data_bits( m_port, CSERIAL_BITS_8 );
     c_serial_set_stop_bits( m_port, CSERIAL_STOP_BITS_1 );
     c_serial_set_parity( m_port, CSERIAL_PARITY_NONE );
@@ -122,3 +124,7 @@ int main( int argc, char** argv ){
         }
     }while( 1 );
 }
+
+
+
+

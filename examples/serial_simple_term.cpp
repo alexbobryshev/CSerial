@@ -286,7 +286,7 @@ int main(int argc, char* argv[]) {
 	/*
 	 * Set various serial port settings.  These are the default.
 	 */
-	c_serial_set_baud_rate(terminal_ctx.port, CSERIAL_BAUD_115200 /*9600*/);
+	c_serial_set_baud_rate(terminal_ctx.port, 115200*8 /*9600*/);
 	c_serial_set_data_bits(terminal_ctx.port, CSERIAL_BITS_8);
 	c_serial_set_stop_bits(terminal_ctx.port, CSERIAL_STOP_BITS_1);
 	c_serial_set_parity(terminal_ctx.port, CSERIAL_PARITY_NONE);
