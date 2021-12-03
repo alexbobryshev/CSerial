@@ -1443,7 +1443,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 	}
 
 	while (1) {
-		uint64_t time_elapsed = unix_get_tick_count() - start_timestamp;
+		uint64_t time_elapsed = c_serial_get_tick_count() - start_timestamp;
 		if (timeout_msec >= 0 && time_elapsed >= (uint64_t)timeout_msec) {
 			ret_code = CSERIAL_ERROR_TIMEOUT;
 			break;
@@ -1637,11 +1637,7 @@ int c_serial_read_data( c_serial_port_t* port,
 int c_serial_read_cancel(c_serial_port_t* port, int timeout_msec) {
 
 	int ret_code = CSERIAL_OK;
-#ifdef CSERIAL_PLATFORM_WINDOWS
-	ULONGLONG start_timestamp = c_serial_get_tick_count();
-#else /*CSERIAL_PLATFORM_WINDOWS*/
-uint64_t start_timestamp = unix_get_tick_count();
-#endif
+    uint64_t start_timestamp = c_serial_get_tick_count();
 
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
