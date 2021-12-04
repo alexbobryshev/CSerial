@@ -1278,6 +1278,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 	int ret_code = CSERIAL_OK;
 	uint64_t start_timestamp = c_serial_get_tick_count();
+	int can_read_control_state = 1;
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD ret = 0;
@@ -1290,9 +1291,9 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 #else /*CSERIAL_PLATFORM_WINDOWS*/
 	fd_set fdset;
 	struct timeval timeout;
-	int originalControlState;
+	int originalControlState = 0;
 	int selectStatus;
-	int newControlState;
+	int newControlState = 0;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
 	if (port == NULL)
@@ -1436,10 +1437,14 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 	/* first get the original state of the serial port lines */
 	if (ioctl(port->port, TIOCMGET, &originalControlState) < 0) {
-		port->last_errnum = errno;
+		/* Some USB emulated serials may not support lines at all */
+		can_read_control_state = 0;
+		if (lines)
+			lines->unsupported = 1;
+		/*port->last_errnum = errno;
 		LOG_ERROR(LOGGER_NAME, "IOCTL failed");
 		pthread_mutex_unlock(&(port->mutex));
-		return -1;
+		return -1;*/
 	}
 
 	while (1) {
@@ -1492,7 +1497,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			//return -1;
 		}
 
-		if (selectStatus == 0) {
+		if (selectStatus == 0 && can_read_control_state) {
 			/* This was a timeout */
 			if (ioctl(port->port, TIOCMGET, &newControlState) < 0) {
 				port->last_errnum = errno;
@@ -1516,7 +1521,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			break;
 		}
 
-		if (lines != NULL) {
+		if (lines != NULL && can_read_control_state) {
 			/* Our line state has changed - check to see if we should ignore the
 			 * change or if this is a valid reason to stop trying to read
 			 */
@@ -1588,6 +1593,10 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		&& lines != NULL) {
 
 		memset(lines, 0, sizeof(struct c_serial_control_lines));
+		if (!can_read_control_state) {
+			lines->unsupported = 1;
+		}
+
 		if (newControlState & TIOCM_CD) {
 			/* Carrier detect */
 			lines->cd = 1;

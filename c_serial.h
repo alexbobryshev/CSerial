@@ -126,6 +126,8 @@ struct c_serial_control_lines {
     int rts;
     /** Ring Indicator(is the phone ringing?) */
     int ri;
+	/** Lines are not available */
+	int unsupported;
 };
 typedef struct c_serial_control_lines c_serial_control_lines_t;
 
