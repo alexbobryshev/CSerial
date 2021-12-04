@@ -1,5 +1,6 @@
 #
 #   Copyright 2016 rm5248
+#   updated 2021 alexb@clever.team
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -51,6 +52,10 @@ SET( C_SERIAL_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CU
 INCLUDE_DIRECTORIES( ${C_SERIAL_INCLUDE_DIRECTORIES} ${CMAKE_CURRENT_BINARY_DIR} )
 
 CONFIGURE_FILE(config.h.in config.h)
+
+IF( UNIX )
+    find_package(Threads REQUIRED)
+ENDIF( UNIX )
 
 #
 # Library information
@@ -125,3 +130,15 @@ IF( WIN32 )
 	ADD_DEFINITIONS( "-DCSERIAL_LIB" )
 	target_compile_definitions( cserial_static PUBLIC CSERIAL_STATIC )
 ENDIF( WIN32 )
+
+#
+# pthread dependency
+#
+if(THREADS_HAVE_PTHREAD_ARG)
+  target_compile_options(cserial_static PUBLIC "-pthread")
+  target_compile_options(cserial PUBLIC "-pthread")
+endif()
+if(CMAKE_THREAD_LIBS_INIT)
+  target_link_libraries(cserial_static "${CMAKE_THREAD_LIBS_INIT}")
+  target_link_libraries(cserial "${CMAKE_THREAD_LIBS_INIT}")
+endif()
