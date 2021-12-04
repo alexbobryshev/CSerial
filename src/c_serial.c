@@ -1402,7 +1402,7 @@ int c_serial_read_data_timeout(
 	}
 
 	/* first get the original state of the serial port lines */
-	if (ioctl(port->port, TIOCMGET, &originalControlState) < 0) {
+	if (ioctl(port->port, TIOCMGET, &original_control_state) < 0) {
 		/* Some USB emulated serials may not support lines at all */
 		can_read_control_state = 0;
 		if (lines)
