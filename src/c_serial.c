@@ -1448,7 +1448,7 @@ int c_serial_read_data_timeout(
 
 		if (select_status == 0 && can_read_control_state) {
 			/* This was a timeout */
-			if (ioctl(port->port, TIOCMGET, &newControlState) < 0) {
+			if (ioctl(port->port, TIOCMGET, &new_control_state) < 0) {
 				port->last_errnum = errno;
 				CSERIALDBG("IOCTL call failed");
 				
