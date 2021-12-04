@@ -239,16 +239,14 @@ void serial_read_thread_fn(terminal_context_type* ctx) {
 int main(int argc, char* argv[]) {
 	terminal_context_type terminal_ctx;
 	int status;
-	int bytes_read;
-	uint8_t data[255];
-	int data_length;
 	int x;
+    int baud_rate = 115200;
 
 	/*
 	 * Use the first argument as the port to open
 	 */
-	if (argc != 2) {
-		fprintf(stderr, "ERROR: First argument must be serial port\n");
+	if (argc < 2) {
+		fprintf(stderr, "USAGE: simpleterm <port> [<baudrate>]\n");
 		/*
 		 * Since no port was provided, print the available ports
 		 */
@@ -263,6 +261,9 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
+    if (argc >= 3) {
+      baud_rate = atoi(argv[2]);
+    }
 
 	/*
 	 * Allocate the serial port struct.
@@ -284,7 +285,7 @@ int main(int argc, char* argv[]) {
 	/*
 	 * Set various serial port settings.  These are the default.
 	 */
-	c_serial_set_baud_rate(terminal_ctx.port, 115200*8 /*9600*/);
+	c_serial_set_baud_rate(terminal_ctx.port, baud_rate);
 	c_serial_set_data_bits(terminal_ctx.port, CSERIAL_BITS_8);
 	c_serial_set_stop_bits(terminal_ctx.port, CSERIAL_STOP_BITS_1);
 	c_serial_set_parity(terminal_ctx.port, CSERIAL_PARITY_NONE);

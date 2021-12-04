@@ -15,7 +15,7 @@
 #ifndef C_SERIAL_H
 #define C_SERIAL_H
 
-#include "simplelogger_defs.h"
+//#include "simplelogger_defs.h"
 
 /**
  * \addtogroup CSerial
@@ -473,17 +473,17 @@ CSERIAL_EXPORT const char* c_serial_get_error_string( int errnum );
 /**
  * Set the global log function that will get all of the 
  */
-CSERIAL_EXPORT int c_serial_set_global_log_function( 
-                                                 simplelogger_log_function func );
+//CSERIAL_EXPORT int c_serial_set_global_log_function( 
+//                                                 simplelogger_log_function func );
 
 /**
  * A simple implementation of a log function which outputs log information
  * to stderr.
  */
-CSERIAL_EXPORT void c_serial_stderr_log_function(const char* logger_name, 
+/*CSERIAL_EXPORT void c_serial_stderr_log_function(const char* logger_name, 
                                                  const struct SL_LogLocation* location,
                                                  const enum SL_LogLevel level,
-                                                 const char* log_string );
+                                                 const char* log_string );*/
 
 /**
  * Get the last error number associated with this port.  This corresponds

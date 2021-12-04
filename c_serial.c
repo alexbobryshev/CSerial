@@ -15,12 +15,6 @@
 */
 
 #include "config.h"
-
-#define SIMPLELOGGER_ENABLE_SMALL_MACROS
-#define SIMPLELOGGER_LOG_FUNCTION_NAME global_log_function
-#define LOGGER_NAME "cserial"
-#include "simplelogger.h"
-
 #include "c_serial_pdetect.h"
 
 #include <stdlib.h>
@@ -30,6 +24,12 @@
 
 #include "c_serial.h"
 #include "c_serial_atomic.h"
+
+#if defined(CSERIAL_DEBUG_PRINT) && CSERIAL_DEBUG_PRINT==1
+#define CSERIALDBG(p) fprintf(stderr,(p))
+#else /*defined(CSERIAL_DEBUG_PRINT) && CSERIAL_DEBUG_PRINT==1*/
+#define CSERIALDBG(p)
+#endif /*defined(CSERIAL_DEBUG_PRINT) && CSERIAL_DEBUG_PRINT==1*/
 
 /*
  * Includes
@@ -72,6 +72,8 @@
 #define close( x ) CloseHandle( x )
 #define SPEED_SWITCH(SPD,io) case SPD: io.BaudRate = CBR_##SPD; break;
 #define GET_SPEED_SWITCH(SPD,io) case CBR_##SPD: baud_return = SPD; break;
+#define DEFAULT_SPEED_SWITCH(SPD,io) default: io.BaudRate = (SPD); break;
+#define DEFAULT_GET_SPEED_SWITCH(SPD,io)  default: baud_return = SPD; break;
 
 typedef DCB serial_io_type;
 typedef HANDLE c_serial_mutex_t;
@@ -89,7 +91,9 @@ typedef HANDLE c_serial_mutex_t;
 #endif
 
 #define SPEED_SWITCH(SPD,io) case SPD: cfsetospeed( &io, B##SPD ); cfsetispeed( &io, B##SPD ); break;
-#define GET_SPEED_SWITCH(SPD,io) case B##SPD: baud_return = SPD; break;
+#define GET_SPEED_SWITCH(SPD,io) case B##SPD: baud_return = (SPD); break;
+#define DEFAULT_SPEED_SWITCH(SPD,io) default: cfsetospeed( &io, (SPD) ); cfsetispeed( &io, (SPD) ); break;
+#define DEFAULT_GET_SPEED_SWITCH(SPD,io)  default: baud_return = (SPD); break;
 
 typedef struct termios serial_io_type;
 typedef pthread_mutex_t c_serial_mutex_t;
@@ -202,33 +206,34 @@ static uint64_t c_serial_get_tick_count() {
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
 
-/*
- * Local defines
- */
-
-#define SET_RTS_IF_REQUIRED( port ) \
-  if( port->rs485_is_software ) { \
-      c_serial_control_lines_t lines; \
-      c_serial_get_control_lines( port, &lines ); \
-      lines.rts = 1;\
-      c_serial_set_control_line( port, &lines, 0 );\
-  }
-
-#define CLEAR_RTS_IF_REQUIRED( port )\
-  if( port->rs485_is_software ) { \
-      c_serial_control_lines_t lines; \
-      c_serial_get_control_lines( port, &lines ); \
-      lines.rts = 0;\
-      c_serial_flush( port );\
-      c_serial_set_control_line( port, &lines, 0 );\
-  }
-
-static simplelogger_log_function global_log_function = NULL;
 
 
 /*
  * Local Methods
  */
+
+static void c_serial_set_rts_if_required(c_serial_port_t* port) {
+	c_serial_control_lines_t lines;
+
+	if (port->rs485_is_software) {
+		c_serial_get_control_lines(port, &lines);
+		lines.rts = 1;
+		c_serial_set_control_line(port, &lines, 0);
+	}
+}
+
+static void c_serial_clear_rts_if_required(c_serial_port_t* port) {
+	c_serial_control_lines_t lines;
+
+	if (port->rs485_is_software) {
+		c_serial_get_control_lines(port, &lines);
+		lines.rts = 0;
+		c_serial_flush(port);
+		c_serial_set_control_line(port, &lines, 0);
+	}
+}
+
+
 
 static int clear_rts( c_serial_port_t* desc ){
 #ifdef CSERIAL_PLATFORM_WINDOWS
@@ -348,7 +353,7 @@ static int set_raw_input( c_serial_port_t* port ) {
         timeouts.WriteTotalTimeoutConstant = 0;
         if( SetCommTimeouts( port->port, &timeouts ) == 0 ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to set comm timeouts" );
+			CSERIALDBG( "Unable to set comm timeouts" );
             return 0;
         }
     }
@@ -376,6 +381,7 @@ static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
 		return CSERIAL_ERROR_GENERIC;
 
     switch( baud_rate ) {
+		DEFAULT_SPEED_SWITCH(baud_rate, newio);
 #ifndef CSERIAL_PLATFORM_WINDOWS
         /* Note that Windows only supports speeds of 110 and above */
         SPEED_SWITCH(0,newio);
@@ -859,6 +865,7 @@ int c_serial_get_baud_rate( c_serial_port_t* port ) {
 #ifdef CSERIAL_PLATFORM_WINDOWS
     GetCommState( port->port, &newio );
     switch( newio.BaudRate ) {
+		DEFAULT_GET_SPEED_SWITCH(newio.BaudRate, newio);
 #else /*CSERIAL_PLATFORM_WINDOWS*/
     switch( cfgetispeed( &newio ) ) {
             GET_SPEED_SWITCH( 0, newio );
@@ -883,8 +890,6 @@ int c_serial_get_baud_rate( c_serial_port_t* port ) {
             GET_SPEED_SWITCH( 19200, newio );
             GET_SPEED_SWITCH( 38400, newio );
             GET_SPEED_SWITCH( 115200, newio );
-    default:
-        baud_return = 0;
     } /* end switch */
 
     port->baud_rate = baud_return;
@@ -1048,7 +1053,7 @@ int c_serial_set_flow_control( c_serial_port_t* port,
     ok = check_rts_handling( port );
     if( ok != CSERIAL_OK ){
         port->flow = old;
-        LOG_ERROR( LOGGER_NAME, "Unable to set flow control: invalid flow "
+		CSERIALDBG( "Unable to set flow control: invalid flow "
                    "control has been specified.  Ignoring." );
         return ok;
     }
@@ -1108,7 +1113,7 @@ int c_serial_write_data( c_serial_port_t* port,
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
-    SET_RTS_IF_REQUIRED( port );
+	c_serial_set_rts_if_required( port );
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     if( !WriteFile( port->port, data, *length, NULL, &(port->write_overlap) ) ) {
@@ -1117,30 +1122,30 @@ int c_serial_write_data( c_serial_port_t* port,
             /* Probably not an error, we're just doing this in an async fasion */
             if( WaitForSingleObject( port->write_overlap.hEvent, INFINITE ) == WAIT_FAILED ) {
                 port->last_errnum = GetLastError();
-                LOG_ERROR( LOGGER_NAME, "Unable to write data out: OVERLAPPED operation failed" );
+				CSERIALDBG( "Unable to write data out: OVERLAPPED operation failed" );
                 return CSERIAL_ERROR_GENERIC;
             }
         } else {
-            LOG_ERROR( LOGGER_NAME, "Unable to write data" );
+			CSERIALDBG( "Unable to write data" );
             return CSERIAL_ERROR_GENERIC;
         }
     }
 
 	if( GetOverlappedResult( port->port, &(port->write_overlap), &bytes_written, 1 ) == 0 ){
-		LOG_ERROR( LOGGER_NAME, "Unable to write data" );
+		CSERIALDBG( "Unable to write data" );
 		return CSERIAL_ERROR_GENERIC;
 	}
 #else /*CSERIAL_PLATFORM_WINDOWS*/
     bytes_written = write( port->port, data, *length );
     if( bytes_written < 0 ) {
         port->last_errnum = errno;
-        LOG_ERROR( LOGGER_NAME, "Unable to write data to serial port" );
+		CSERIALDBG( "Unable to write data to serial port" );
         return CSERIAL_ERROR_GENERIC;
     }
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 	*length = bytes_written;
 
-    CLEAR_RTS_IF_REQUIRED( port );
+	c_serial_clear_rts_if_required( port );
 
     return CSERIAL_OK;
 }
@@ -1160,7 +1165,7 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
-	SET_RTS_IF_REQUIRED(port);
+	c_serial_set_rts_if_required(port);
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	if (!WriteFile(port->port, data, *length, NULL, &(port->write_overlap))) {
@@ -1179,18 +1184,18 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 			/* Probably not an error, we're just doing this in an async fasion */
 			if (WaitForSingleObject(port->write_overlap.hEvent, wait_time) == WAIT_FAILED) {
 				port->last_errnum = GetLastError();
-				LOG_ERROR(LOGGER_NAME, "Unable to write data out: timeout");
+				CSERIALDBG("Unable to write data out: timeout");
 				return CSERIAL_ERROR_TIMEOUT;
 			}
 		}
 		else {
-			LOG_ERROR(LOGGER_NAME, "Unable to write data");
+			CSERIALDBG("Unable to write data");
 			return CSERIAL_ERROR_GENERIC;
 		}
 	}
 
 	if (GetOverlappedResult(port->port, &(port->write_overlap), &bytes_written, 1) == 0) {
-		LOG_ERROR(LOGGER_NAME, "Unable to write data");
+		CSERIALDBG("Unable to write data");
 		return CSERIAL_ERROR_GENERIC;
 	}
 #else /*CSERIAL_PLATFORM_WINDOWS*/
@@ -1199,13 +1204,13 @@ int c_serial_write_data_timeout(c_serial_port_t* port,
 	bytes_written = write(port->port, data, *length);
 	if (bytes_written < 0) {
 		port->last_errnum = errno;
-		LOG_ERROR(LOGGER_NAME, "Unable to write data to serial port");
+		CSERIALDBG("Unable to write data to serial port");
 		return CSERIAL_ERROR_GENERIC;
 	}
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 	*length = bytes_written;
 
-	CLEAR_RTS_IF_REQUIRED(port);
+	c_serial_clear_rts_if_required(port);
 
 	return CSERIAL_OK;
 }
@@ -1250,7 +1255,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 	ResetEvent(port->cancel_read_event);
 
 	if (GetCommModemStatus(port->port, &originalControlState) == 0) {
-		LOG_ERROR(LOGGER_NAME, "Unable to get comm modem lines");
+		CSERIALDBG("Unable to get comm modem lines");
 		return -1;
 	}
 	do {
@@ -1258,7 +1263,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			DWORD comErrors = { 0 };
 			COMSTAT portStatus = { 0 };
 			if (!ClearCommError(port->port, &comErrors, &portStatus)) {
-				LOG_ERROR(LOGGER_NAME, "Unable to ClearCommError");
+				CSERIALDBG("Unable to ClearCommError");
 				return -1;
 			}
 			else {
@@ -1318,7 +1323,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 		if (ret & EV_RXCHAR && data != NULL) {
 			if (!ReadFile(port->port, data, *data_length, &bytesGot, &(port->read_overlap))) {
-				LOG_ERROR(LOGGER_NAME, "Unable to read bytes from port");
+				CSERIALDBG("Unable to read bytes from port");
 				ReleaseMutex(port->mutex);
 				*data_length = 0;
 				return CSERIAL_ERROR_GENERIC;
@@ -1343,7 +1348,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		int modem_lines;
 
 		if (GetCommModemStatus(port->port, &modem_lines) == 0) {
-			LOG_ERROR(LOGGER_NAME, "Unable to get comm modem lines");
+			CSERIALDBG("Unable to get comm modem lines");
 			return -1;
 		}
 
@@ -1414,7 +1419,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		if (selectStatus < 0) {
 			if (errno != EBADF) {
 				port->last_errnum = errno;
-				LOG_ERROR(LOGGER_NAME, "Bad value from select");
+				CSERIALDBG("Bad value from select");
 			}
 
 			ret_code = CSERIAL_ERROR_GENERIC;
@@ -1425,7 +1430,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			/* This was a timeout */
 			if (ioctl(port->port, TIOCMGET, &newControlState) < 0) {
 				port->last_errnum = errno;
-				LOG_ERROR(LOGGER_NAME, "IOCTL call failed");
+				CSERIALDBG("IOCTL call failed");
 				
 				ret_code = CSERIAL_ERROR_GENERIC;
 				break;
@@ -1499,7 +1504,7 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		int ret = read(port->port, data, *data_length);
 		if (ret < 0) {
 			port->last_errnum = errno;
-			LOG_ERROR(LOGGER_NAME, "Unable to read data");
+			CSERIALDBG("Unable to read data");
 			ret_code = CSERIAL_ERROR_GENERIC;
 		}
 		else {
@@ -1667,14 +1672,14 @@ int c_serial_set_control_line( c_serial_port_t* port,
     if( lines->dtr ) {
         if( !EscapeCommFunction( port->port, SETDTR ) ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to get serial line state" );
+			CSERIALDBG( "Unable to get serial line state" );
             return CSERIAL_ERROR_GENERIC;
         }
         port->winDTR = 1;
     } else {
         if( !EscapeCommFunction( port->port, CLRDTR ) ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to get serial line state" );
+			CSERIALDBG( "Unable to get serial line state" );
             return CSERIAL_ERROR_GENERIC;
         }
         port->winDTR = 0;
@@ -1683,14 +1688,14 @@ int c_serial_set_control_line( c_serial_port_t* port,
     if( lines->rts ) {
         if( !EscapeCommFunction( port->port, SETRTS ) ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to get serial line state" );
+			CSERIALDBG( "Unable to get serial line state" );
             return CSERIAL_ERROR_GENERIC;
         }
         port->winRTS = 1;
     } else {
         if( !EscapeCommFunction( port->port, CLRRTS ) ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to get serial line state" );
+			CSERIALDBG( "Unable to get serial line state" );
             return CSERIAL_ERROR_GENERIC;
         }
         port->winRTS = 0;
@@ -1699,7 +1704,7 @@ int c_serial_set_control_line( c_serial_port_t* port,
 
     if( ioctl( port->port, TIOCMGET, &toSet ) < 0 ) {
         port->last_errnum = errno;
-        LOG_ERROR( LOGGER_NAME, "IOCTL failed when attempting to read control lines" );
+		CSERIALDBG( "IOCTL failed when attempting to read control lines" );
         return CSERIAL_ERROR_GENERIC;
     }
 
@@ -1717,7 +1722,7 @@ int c_serial_set_control_line( c_serial_port_t* port,
 
     if( ioctl( port->port, TIOCMSET, &toSet ) < 0 ) {
         port->last_errnum = errno;
-        LOG_ERROR( LOGGER_NAME, "IOCTL failed when attempting to set control lines" );
+		CSERIALDBG( "IOCTL failed when attempting to set control lines" );
         return CSERIAL_ERROR_GENERIC;
     }
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
@@ -1744,7 +1749,7 @@ int c_serial_get_control_lines( c_serial_port_t* port,
         DWORD get_val;
         if( GetCommModemStatus( port->port, &get_val ) == 0 ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to get serial line state" );
+			CSERIALDBG( "Unable to get serial line state" );
             return CSERIAL_ERROR_GENERIC;
         }
 
@@ -1771,7 +1776,7 @@ int c_serial_get_control_lines( c_serial_port_t* port,
         int get_val;
         if( ioctl( port->port, TIOCMGET, &get_val ) < 0 ) {
             port->last_errnum = errno;
-            LOG_ERROR( LOGGER_NAME, "IOCTL failed when attempting to read control lines" );
+			CSERIALDBG( "IOCTL failed when attempting to read control lines" );
             return CSERIAL_ERROR_GENERIC;
         }
 
@@ -1815,7 +1820,7 @@ int c_serial_get_available( c_serial_port_t* port,
         COMSTAT portStatus = {0};
         if( !ClearCommError( port->port, &comErrors, &portStatus ) ) {
             port->last_errnum = GetLastError();
-            LOG_ERROR( LOGGER_NAME, "Unable to retrieve bytes available" );
+			CSERIALDBG( "Unable to retrieve bytes available" );
             return CSERIAL_ERROR_GENERIC;
         } else {
             *available = portStatus.cbInQue;
@@ -1824,7 +1829,7 @@ int c_serial_get_available( c_serial_port_t* port,
 #else /*CSERIAL_PLATFORM_WINDOWS*/
     if( ioctl( port->port, FIONREAD, available ) < 0 ) {
         port->last_errnum = errno;
-        LOG_ERROR( LOGGER_NAME, "IOCTL failed when attempting to read bytes available" );
+		CSERIALDBG( "IOCTL failed when attempting to read bytes available" );
         return CSERIAL_ERROR_GENERIC;
     }
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
@@ -1882,7 +1887,7 @@ const char* c_serial_get_error_string( int errnum ) {
     }
 }
 
-int c_serial_set_global_log_function( simplelogger_log_function func ){
+/*int c_serial_set_global_log_function( simplelogger_log_function func ){
     LOG_TRACE( LOGGER_NAME, "Setting new log function" );
 
     global_log_function = func;
@@ -1906,7 +1911,7 @@ void c_serial_stderr_log_function(const char* logger_name,
              location->function,
              log_string );
     fflush( stderr );
-}
+}*/
 
 c_serial_errnum_t c_serial_get_last_native_errnum( c_serial_port_t* port ) {
 	if (port == NULL)
@@ -2029,8 +2034,7 @@ int c_serial_set_rts_control( c_serial_port_t* port,
     ok = check_rts_handling( port );
     if( ok != CSERIAL_OK ){
         port->rs485 = old;
-        LOG_ERROR( LOGGER_NAME,
-                   "Unable to set RTS handling: invalid flow "
+		CSERIALDBG( "Unable to set RTS handling: invalid flow "
                    "control has been specified.  Ignoring." );
         return ok;
     }
