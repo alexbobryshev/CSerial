@@ -654,9 +654,8 @@ int c_serial_new( c_serial_port_type** port, c_serial_errnum_t* errnum ) {
 }
 
 void c_serial_free( c_serial_port_type* port ) {
-    if( port == NULL ) {
+    if( port == NULL ) 
         return;
-    }
 
     c_serial_close( port );
 
@@ -670,6 +669,8 @@ void c_serial_free( c_serial_port_type* port ) {
 #endif
 
     free( port->port_name );
+    port->port_name = NULL;
+
     free( port );
 }
 
@@ -825,7 +826,15 @@ int c_serial_set_port_name( c_serial_port_type* port,
     port_name_len += 1;
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 
+    if (port->port_name) {
+      free((void*)port->port_name);
+      port->port_name = NULL;
+    }
+
     port->port_name = malloc( port_name_len );
+    if (!port->port_name)
+      return CSERIAL_ERROR_NO_MEMORY;
+
     memset( port->port_name, 0, port_name_len );
     memcpy( port->port_name + port_name_offset,
             port_name,
@@ -1920,12 +1929,21 @@ const char** c_serial_get_serial_ports_list() {
 
     port_names_size = 0;
     port_names = malloc( sizeof( char* ) * CSERIAL_MAX_PORTS);
-	memset( port_names, 0, sizeof( char* ) * CSERIAL_MAX_PORTS);
+    if (!port_names)
+      return NULL;
+	
+    memset( port_names, 0, sizeof( char* ) * CSERIAL_MAX_PORTS);
+
 #ifdef CSERIAL_PLATFORM_WINDOWS
     {
         int x;
         /* Brute force, baby! */
         char* port_to_open = malloc( 11 );
+        if (!port_to_open) {
+          free(port_names);
+          return NULL;
+        }
+
         HANDLE* port;
         for( x = 0; x <= CSERIAL_MAX_PORTS; x++ ) {
             _snprintf_s( port_to_open, 11, 11, "\\\\.\\COM%d", x );
@@ -1937,9 +1955,11 @@ const char** c_serial_get_serial_ports_list() {
                  * we could get INVALID_HANDLE_VALUE if the port is already open,
                  * so make sure we check to see if it is not that value
                  */
-                port_names[ port_names_size ] = malloc( 6 );
-                memcpy( port_names[ port_names_size ], port_to_open + 4, 6 );
-                port_names_size++;
+                port_names[port_names_size] = malloc( 6 );
+                if (port_names[port_names_size]) {
+                  memcpy(port_names[port_names_size], port_to_open + 4, 6);
+                  port_names_size++;
+                }
             }
             CloseHandle( port );
         }
@@ -1997,22 +2017,22 @@ const char** c_serial_get_serial_ports_list() {
     }
 #endif /* CSERIAL_PLATFORM_WINDOWS */
 
-    port_names[ port_names_size + 1 ] = NULL;
+    port_names[port_names_size + 1] = NULL;
 
     return (const char**)port_names;
 }
 
 void c_serial_free_serial_ports_list( const char** port_list ) {
-    char** real_port_list = (char**)port_list;
+    const char** real_port_list = (char**)port_list;
     int x;
     for( x = 0; x < CSERIAL_MAX_PORTS; x++ ) {
-        if( real_port_list[ x ] == NULL ) {
+        if( real_port_list[x] == NULL ) {
             break;
         }
-        free( real_port_list[ x ] );
+        free( (void*)real_port_list[x] );
     }
 
-    free( real_port_list );
+    free((void*)real_port_list );
 }
 
 int c_serial_set_rts_control( c_serial_port_type* port,

@@ -88,6 +88,8 @@ typedef int c_serial_errnum_t;
 #define CSERIAL_ERROR_TIMEOUT -12
 /** Operation cancelled */
 #define CSERIAL_ERROR_CANCELLED -13
+/** No memory error */
+#define CSERIAL_ERROR_NO_MEMORY -14
 
 /**
  * Serial line flags
