@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <thread> // contains <chrono>
+#include <cstring>
 
 #define CSERIAL_STATIC
 
