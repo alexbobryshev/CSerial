@@ -188,14 +188,14 @@ int key_press() { // not working: ¹ (251), num lock (-144), caps lock (-20), wi
 #endif // Windows/Linux
 
 struct terminal_context_type {
-	c_serial_port_t* port;
+	c_serial_port_type* port;
 
 };
 
 
 void serial_read_thread_fn(terminal_context_type* ctx) {
-	c_serial_control_lines_t m_lines;
-	c_serial_control_lines_t prev_lines;
+	c_serial_control_lines_type m_lines;
+	c_serial_control_lines_type prev_lines;
 	/*
 	 * Listen for anything that comes across, and echo it back.
 	 */
@@ -221,7 +221,7 @@ void serial_read_thread_fn(terminal_context_type* ctx) {
 			printf("%c" /*    0x%02X (ASCII: %c)\n"*/, data[x]/*, data[x]*/);
 		}
 
-		if (memcmp(&m_lines, &prev_lines, sizeof(c_serial_control_lines_t))) {
+		if (memcmp(&m_lines, &prev_lines, sizeof(c_serial_control_lines_type))) {
 			printf("Serial line state: CD: %d CTS: %d DSR: %d DTR: %d RTS: %d RI: %d\n",
 				m_lines.cd,
 				m_lines.cts,

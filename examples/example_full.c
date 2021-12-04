@@ -23,8 +23,8 @@
  */
 
 int _xmain( int argc, char** argv ){
-    c_serial_port_t* m_port;
-    c_serial_control_lines_t m_lines;
+    c_serial_port_type* m_port;
+    c_serial_control_lines_type m_lines;
     int status;
     int bytes_read;
     uint8_t data[ 255 ];
