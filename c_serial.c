@@ -73,24 +73,8 @@
 #define SPEED_SWITCH(SPD,io) case SPD: io.BaudRate = CBR_##SPD; break;
 #define GET_SPEED_SWITCH(SPD,io) case CBR_##SPD: baud_return = SPD; break;
 
-/*#define GET_SERIAL_PORT_STRUCT( cserial_port, io_name ) \
-       DCB io_name = {0};\
-       io_name.DCBlength = sizeof( io_name ); \
-       if (!GetCommState( cserial_port->port, &io_name ) ) { \
-	     cserial_port->last_errnum = GetLastError();\
-         printf("bad get comm line %d\n", __LINE__);\
-         return -1;\
-       }
-#define SET_SERIAL_PORT_STRUCT( cserial_port, io_name ) \
-    if( !SetCommState( cserial_port->port, &io_name ) ){\
-		cserial_port->last_errnum = GetLastError();\
-        printf("bad set comm\n");\
-        return -1;\
-    }
-	*/
 typedef DCB serial_io_type;
 typedef HANDLE c_serial_mutex_t;
-
 
 #else /*CSERIAL_PLATFORM_WINDOWS*/
 
@@ -106,20 +90,9 @@ typedef HANDLE c_serial_mutex_t;
 
 #define SPEED_SWITCH(SPD,io) case SPD: cfsetospeed( &io, B##SPD ); cfsetispeed( &io, B##SPD ); break;
 #define GET_SPEED_SWITCH(SPD,io) case B##SPD: baud_return = SPD; break;
-/*#define GET_SERIAL_PORT_STRUCT( cserial_port, io_name )	struct termios io_name; \
-        if( tcgetattr( cserial_port->port, &io_name ) < 0 ){ \
-            return -1; \
-        }
-		*/
+
 typedef struct termios serial_io_type;
 typedef pthread_mutex_t c_serial_mutex_t;
-/*
-#define SET_SERIAL_PORT_STRUCT( cserial_port, io_name ) \
-    if( tcsetattr( cserial_port->port, TCSANOW, &io_name ) < 0 ){\
-        return -1;\
-    }
-	*/
-
 
 #endif /* CSERIAL_PLATFORM_WINDOWS */
 
@@ -161,7 +134,6 @@ struct c_serial_port {
 #endif /*CSERIAL_PLATFORM_WINDOWS*/
 };
 /* \endcond */
-
 
 
 /*
@@ -261,15 +233,15 @@ static simplelogger_log_function global_log_function = NULL;
 static int clear_rts( c_serial_port_t* desc ){
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	serial_io_type newio;
+	
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 	  return CSERIAL_ERROR_GENERIC;
-//    GET_SERIAL_PORT_STRUCT( desc, newio );
-    newio.fRtsControl = RTS_CONTROL_TOGGLE;
+
+	newio.fRtsControl = RTS_CONTROL_TOGGLE;
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 	  return CSERIAL_ERROR_GENERIC;
-    //SET_SERIAL_PORT_STRUCT( desc, newio );
 
 #elif defined( HAVE_LINUX_SERIAL )
     struct serial_rs485 rs485conf;
@@ -303,13 +275,11 @@ static int set_rts_hw( c_serial_port_t* desc ){
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
 
-//    GET_SERIAL_PORT_STRUCT( desc, newio );
     newio.fRtsControl = RTS_CONTROL_TOGGLE;
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
 
-//    SET_SERIAL_PORT_STRUCT( desc, newio );
 #elif defined( HAVE_LINUX_SERIAL )
     struct serial_rs485 rs485conf;
     if( ioctl( desc->port, TIOCGRS485, &rs485conf ) < 0 ){
@@ -351,10 +321,10 @@ static int set_rts_settings( c_serial_port_t* desc ){
 
 static int set_raw_input( c_serial_port_t* port ) {
 	serial_io_type newio;
+
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(port, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-	//GET_SERIAL_PORT_STRUCT( port, newio );
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     newio.fBinary = TRUE;
@@ -394,17 +364,16 @@ static int set_raw_input( c_serial_port_t* port ) {
 
 	if (c_serial_set_serial_port_struct(port, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-	//SET_SERIAL_PORT_STRUCT( port, newio );
 
     return CSERIAL_OK;
 }
 
 static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
 	serial_io_type newio;
+
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-	//GET_SERIAL_PORT_STRUCT( desc, newio );
 
     switch( baud_rate ) {
 #ifndef CSERIAL_PLATFORM_WINDOWS
@@ -437,7 +406,6 @@ static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -447,12 +415,11 @@ static int set_baud_rate( c_serial_port_t* desc, int baud_rate ) {
  */
 static int set_data_bits( c_serial_port_t* desc,
                           enum CSerial_Data_Bits data_bits ) {
-    //GET_SERIAL_PORT_STRUCT( desc, newio );
 	serial_io_type newio;
+
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     newio.ByteSize = data_bits;
@@ -471,9 +438,8 @@ static int set_data_bits( c_serial_port_t* desc,
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
-    return CSERIAL_OK;
+	return CSERIAL_OK;
 }
 
 /**
@@ -481,12 +447,11 @@ static int set_data_bits( c_serial_port_t* desc,
  */
 static int set_stop_bits( c_serial_port_t* desc,
                           enum CSerial_Stop_Bits stop_bits ) {
-    //GET_SERIAL_PORT_STRUCT( desc, newio );
 	serial_io_type newio;
+
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     if( stop_bits == CSERIAL_STOP_BITS_1 ) {
@@ -504,7 +469,6 @@ static int set_stop_bits( c_serial_port_t* desc,
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -513,12 +477,11 @@ static int set_stop_bits( c_serial_port_t* desc,
  * @param parity 0 for no parity, 1 for odd parity, 2 for even parity
  */
 static int set_parity( c_serial_port_t* desc, enum CSerial_Parity parity ) {
-    //GET_SERIAL_PORT_STRUCT( desc, newio );
 	serial_io_type newio;
+
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
     if( parity == CSERIAL_PARITY_NONE ) {
@@ -542,8 +505,6 @@ static int set_parity( c_serial_port_t* desc, enum CSerial_Parity parity ) {
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-
-	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     return CSERIAL_OK;
 }
@@ -572,8 +533,8 @@ static int set_flow_control( c_serial_port_t* desc,
                              enum CSerial_RTS_Handling rts_handling ) {
     int rc;
     int status = CSERIAL_OK;
-    //GET_SERIAL_PORT_STRUCT( desc, newio );
 	serial_io_type newio;
+
 	c_serial_init_serial_io(&newio);
 	if (c_serial_get_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
@@ -614,8 +575,6 @@ static int set_flow_control( c_serial_port_t* desc,
 
 	if (c_serial_set_serial_port_struct(desc, &newio) < 0)
 		return CSERIAL_ERROR_GENERIC;
-
-	//SET_SERIAL_PORT_STRUCT( desc, newio );
 
     status = set_rts_settings( desc );
 
@@ -755,13 +714,6 @@ int c_serial_open_keep_settings( c_serial_port_t* port, int keepSettings ) {
         }
         return CSERIAL_ERROR_GENERIC;
     }
-
-/*	port->mutex = CreateMutex( NULL, FALSE, NULL );
-	if( port->mutex == NULL ){
-		port->last_errnum = GetLastError();
-		LOG_ERROR( LOGGER_NAME, "Unable to create mutex" );
-		return CSERIAL_ERROR_GENERIC;
-	}*/
 #else /*CSERIAL_PLATFORM_WINDOWS*/
     port->port = open( port->port_name, O_RDWR );
     if( port->port < 0 ) {
@@ -892,26 +844,23 @@ int c_serial_set_baud_rate( c_serial_port_t* port,
 
 int c_serial_get_baud_rate( c_serial_port_t* port ) {
     int baud_return;
+	serial_io_type newio;
 
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
-    if( !port->is_open ) {
+    if( !port->is_open ) 
         return port->baud_rate;
-    }
 
-    {
-		serial_io_type newio;
-		c_serial_init_serial_io(&newio);
-		if (c_serial_get_serial_port_struct(port, &newio) < 0)
-			return CSERIAL_ERROR_GENERIC;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(port, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
 
-        //GET_SERIAL_PORT_STRUCT( port, newio );
 #ifdef CSERIAL_PLATFORM_WINDOWS
-        GetCommState( port->port, &newio );
-        switch( newio.BaudRate ) {
+    GetCommState( port->port, &newio );
+    switch( newio.BaudRate ) {
 #else /*CSERIAL_PLATFORM_WINDOWS*/
-        switch( cfgetispeed( &newio ) ) {
+    switch( cfgetispeed( &newio ) ) {
             GET_SPEED_SWITCH( 0, newio );
             GET_SPEED_SWITCH( 50, newio );
             GET_SPEED_SWITCH( 75, newio );
@@ -934,10 +883,9 @@ int c_serial_get_baud_rate( c_serial_port_t* port ) {
             GET_SPEED_SWITCH( 19200, newio );
             GET_SPEED_SWITCH( 38400, newio );
             GET_SPEED_SWITCH( 115200, newio );
-        default:
-            baud_return = 0;
-        } /* end switch */
-    }
+    default:
+        baud_return = 0;
+    } /* end switch */
 
     port->baud_rate = baud_return;
     return port->baud_rate;
@@ -957,41 +905,39 @@ int c_serial_set_data_bits( c_serial_port_t* port,
 }
 
 enum CSerial_Data_Bits c_serial_get_data_bits( c_serial_port_t* port ) {
+	serial_io_type newio;
+
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
-    {
-//        GET_SERIAL_PORT_STRUCT( port, newio );
-		serial_io_type newio;
-		c_serial_init_serial_io(&newio);
-		if (c_serial_get_serial_port_struct(port, &newio) < 0)
-			return CSERIAL_ERROR_GENERIC;
+    c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(port, &newio) < 0)
+        return CSERIAL_ERROR_GENERIC;
 		
 #ifdef CSERIAL_PLATFORM_WINDOWS
-        switch( newio.ByteSize ) {
-        case 5:
-            return CSERIAL_BITS_5;
-        case 6:
-            return CSERIAL_BITS_6;
-        case 7:
-            return CSERIAL_BITS_7;
-        case 8:
-            return CSERIAL_BITS_8;
-        }
-#else /*CSERIAL_PLATFORM_WINDOWS*/
-        if( ( newio.c_cflag | CS8 ) == CS8 ) {
-            return CSERIAL_BITS_8;
-        } else if( ( newio.c_cflag | CS7 ) == CS7 ) {
-            return CSERIAL_BITS_7;
-        } else if( ( newio.c_cflag | CS6 ) == CS6 ) {
-            return CSERIAL_BITS_6;
-        } else if( ( newio.c_cflag | CS5 ) == CS5 ) {
-            return CSERIAL_BITS_5;
-        } else {
-            return 0;
-        }
-#endif /*CSERIAL_PLATFORM_WINDOWS*/
+    switch( newio.ByteSize ) {
+    case 5:
+        return CSERIAL_BITS_5;
+    case 6:
+        return CSERIAL_BITS_6;
+    case 7:
+        return CSERIAL_BITS_7;
+    case 8:
+        return CSERIAL_BITS_8;
     }
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+    if( ( newio.c_cflag | CS8 ) == CS8 ) {
+        return CSERIAL_BITS_8;
+    } else if( ( newio.c_cflag | CS7 ) == CS7 ) {
+        return CSERIAL_BITS_7;
+    } else if( ( newio.c_cflag | CS6 ) == CS6 ) {
+        return CSERIAL_BITS_6;
+    } else if( ( newio.c_cflag | CS5 ) == CS5 ) {
+        return CSERIAL_BITS_5;
+    } else {
+        return 0;
+    }
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 
 	return -1;
 }
@@ -1010,35 +956,33 @@ int c_serial_set_stop_bits( c_serial_port_t* port,
 }
 
 enum CSerial_Stop_Bits c_serial_get_stop_bits( c_serial_port_t* port ) {
+	serial_io_type newio;
+
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
-    {
-        //GET_SERIAL_PORT_STRUCT( port, newio );
-		serial_io_type newio;
-		c_serial_init_serial_io(&newio);
-		if (c_serial_get_serial_port_struct(port, &newio) < 0)
-			return CSERIAL_ERROR_GENERIC;
+    c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(port, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
-        port->stop_bits = newio.StopBits;
-        if( newio.StopBits == 1 ) {
-            return 1;
-        } else if( newio.StopBits == 2 ) {
-            return 2;
-        } else {
-            return -1;
-        }
-#else /*CSERIAL_PLATFORM_WINDOWS*/
-        if( newio.c_cflag & CSTOPB ) {
-            port->stop_bits = 2;
-            return 2;
-        } else {
-            port->stop_bits = 1;
-            return 1;
-        }
-#endif /*CSERIAL_PLATFORM_WINDOWS*/
+    port->stop_bits = newio.StopBits;
+    if( newio.StopBits == 1 ) {
+        return 1;
+    } else if( newio.StopBits == 2 ) {
+        return 2;
+    } else {
+        return -1;
     }
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+    if( newio.c_cflag & CSTOPB ) {
+        port->stop_bits = 2;
+        return 2;
+    } else {
+        port->stop_bits = 1;
+        return 1;
+    }
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 }
 
 int c_serial_set_parity( c_serial_port_t* port,
@@ -1055,41 +999,39 @@ int c_serial_set_parity( c_serial_port_t* port,
 }
 
 enum CSerial_Parity c_serial_get_parity( c_serial_port_t* port ) {
+	serial_io_type newio;
+
 	if (port == NULL)
 		return CSERIAL_ERROR_INVALID_PORT;
 
-    {
-        //GET_SERIAL_PORT_STRUCT( port, newio );
-		serial_io_type newio;
-		c_serial_init_serial_io(&newio);
-		if (c_serial_get_serial_port_struct(port, &newio) < 0)
-			return CSERIAL_ERROR_GENERIC;
+	c_serial_init_serial_io(&newio);
+	if (c_serial_get_serial_port_struct(port, &newio) < 0)
+		return CSERIAL_ERROR_GENERIC;
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
-        if( newio.Parity == NOPARITY ) {
-            return 0;
-        } else if( newio.Parity == ODDPARITY ) {
-            return 1;
-        } else if( newio.Parity == EVENPARITY ) {
-            return 2;
-        } else {
-            return -1;
-        }
-#else /*CSERIAL_PLATFORM_WINDOWS*/
-        if( !( newio.c_cflag & PARENB ) ) {
-            /* No parity */
-            return 0;
-        } else if( newio.c_cflag & PARODD ) {
-            /* Odd parity */
-            return 1;
-        } else if( !( newio.c_cflag & PARODD ) ) {
-            /* Even parity */
-            return 2;
-        } else {
-            return -1;
-        }
-#endif /*CSERIAL_PLATFORM_WINDOWS*/
+    if( newio.Parity == NOPARITY ) {
+        return 0;
+    } else if( newio.Parity == ODDPARITY ) {
+        return 1;
+    } else if( newio.Parity == EVENPARITY ) {
+        return 2;
+    } else {
+        return -1;
     }
+#else /*CSERIAL_PLATFORM_WINDOWS*/
+    if( !( newio.c_cflag & PARENB ) ) {
+        /* No parity */
+        return 0;
+    } else if( newio.c_cflag & PARODD ) {
+        /* Odd parity */
+        return 1;
+    } else if( !( newio.c_cflag & PARODD ) ) {
+        /* Even parity */
+        return 2;
+    } else {
+        return -1;
+    }
+#endif /*CSERIAL_PLATFORM_WINDOWS*/
 }
 
 int c_serial_set_flow_control( c_serial_port_t* port,
@@ -1123,7 +1065,6 @@ enum CSerial_Flow_Control c_serial_get_flow_control( c_serial_port_t* port ) {
 		return CSERIAL_ERROR_INVALID_PORT;
 	
 	{
-        //GET_SERIAL_PORT_STRUCT( port, newio );
 		serial_io_type newio;
 		c_serial_init_serial_io(&newio);
 		if (c_serial_get_serial_port_struct(port, &newio) < 0)
@@ -1441,10 +1382,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		can_read_control_state = 0;
 		if (lines)
 			lines->unsupported = 1;
-		/*port->last_errnum = errno;
-		LOG_ERROR(LOGGER_NAME, "IOCTL failed");
-		pthread_mutex_unlock(&(port->mutex));
-		return -1;*/
 	}
 
 	while (1) {
@@ -1460,8 +1397,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		}
 
 		if (!port->is_open) {
-//			pthread_mutex_unlock(&(port->mutex));
-//			return -1;
 			ret_code = CSERIAL_ERROR_NO_SUCH_SERIAL_PORT;
 			break;
 		}
@@ -1476,15 +1411,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 		}
 
 		selectStatus = select(port->port + 1, &fdset, NULL, NULL, &timeout);
-		
-//		if (!port->is_open) {
-			/* check to see if the port is closed */
-			//pthread_mutex_unlock(&(port->mutex));
-			//return -1;
-//			ret_code = CSERIAL_ERROR_NO_SUCH_SERIAL_PORT;
-//			break;
-//		}
-
 		if (selectStatus < 0) {
 			if (errno != EBADF) {
 				port->last_errnum = errno;
@@ -1493,8 +1419,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 
 			ret_code = CSERIAL_ERROR_GENERIC;
 			break;
-			//pthread_mutex_unlock(&(port->mutex));
-			//return -1;
 		}
 
 		if (selectStatus == 0 && can_read_control_state) {
@@ -1505,8 +1429,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 				
 				ret_code = CSERIAL_ERROR_GENERIC;
 				break;
-				//pthread_mutex_unlock(&(port->mutex));
-				//return -1;
 			}
 
 			if (newControlState == originalControlState) {
@@ -1579,7 +1501,6 @@ int c_serial_read_data_timeout(c_serial_port_t* port,
 			port->last_errnum = errno;
 			LOG_ERROR(LOGGER_NAME, "Unable to read data");
 			ret_code = CSERIAL_ERROR_GENERIC;
-			//return CSERIAL_ERROR_GENERIC;
 		}
 		else {
 			*data_length = ret;

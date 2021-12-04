@@ -7,8 +7,6 @@
 
 #include "c_serial.h"
 
-//using namespace std;
-
 void println(const std::string& s = "") {
 	std::cout << s << std::endl;
 }
