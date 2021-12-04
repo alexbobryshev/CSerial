@@ -717,7 +717,7 @@ int c_serial_open_keep_settings(
     }
 
 #ifdef CSERIAL_PLATFORM_WINDOWS
-    port->port = CreateFile( port->port_name,
+    port->port = CreateFileA( port->port_name,
                              GENERIC_READ | GENERIC_WRITE,
                              0, 0,
                              OPEN_EXISTING,
@@ -1258,7 +1258,7 @@ int c_serial_read_data_timeout(
 	DWORD ret = 0;
 	int current_available = 0;
 	int bytes_got;
-	int original_control_state;
+  DWORD original_control_state;
 	int got_data = 0;
 	HANDLE wait_objects[2];
 	DWORD wait_result = 0;
@@ -1947,7 +1947,7 @@ const char** c_serial_get_serial_ports_list() {
         HANDLE* port;
         for( x = 0; x <= CSERIAL_MAX_PORTS; x++ ) {
             _snprintf_s( port_to_open, 11, 11, "\\\\.\\COM%d", x );
-            port = CreateFile( port_to_open, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0 );
+            port = CreateFileA( port_to_open, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0 );
             if( port != INVALID_HANDLE_VALUE ||
                     ( port == INVALID_HANDLE_VALUE &&
                       GetLastError() != ERROR_FILE_NOT_FOUND ) ) {
