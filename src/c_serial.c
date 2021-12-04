@@ -16,14 +16,14 @@
 
 #include "config.h"
 #include "c_serial_pdetect.h"
+#include "c_serial_atomic.h"
 
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
 
-#include "c_serial.h"
-#include "c_serial_atomic.h"
+#include <cserial/c_serial.h>
 
 #if defined(CSERIAL_DEBUG_PRINT) && CSERIAL_DEBUG_PRINT==1
 #define CSERIALDBG(p) fprintf(stderr,(p))

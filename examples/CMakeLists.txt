@@ -1,5 +1,6 @@
 #
 #   Copyright 2016 rm5248
+#   updated 2021 alexb@clever.team
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -20,5 +21,13 @@ IF( UNIX )
     pkg_search_module( CSERIAL REQUIRED cserial )
 ENDIF( UNIX )
 
+IF( WIN32 )
+    SET( C_SERIAL_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../include )
+    INCLUDE_DIRECTORIES( ${C_SERIAL_INCLUDE_DIRECTORIES} ${CMAKE_CURRENT_BINARY_DIR} )
+ENDIF( WIN32 )
+
 add_executable( cserial-example example_full.c )
 target_link_libraries( cserial-example ${CSERIAL_LIBRARIES} )
+
+add_executable( simpleterm serial_simple_term.cpp )
+target_link_libraries( simpleterm ${CSERIAL_LIBRARIES} )

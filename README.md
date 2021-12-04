@@ -20,6 +20,14 @@ open an issue on GitHub.  See the 'Bugs' section for more details on this.
 
 Find builds on [Jenkins!](https://jenkins.rm5248.com/view/CSerial/)
 
+## Build and install (Windows)
+
+cd <CSerial dir>
+mkdir build
+cd build
+cmake.exe "-D CMAKE_INSTALL_PREFIX:PATH=..\install" ..
+
+
 ## Install(Debian-based systems)
 
 There is an APT server setup that provides CSerial that you can find

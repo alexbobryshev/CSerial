@@ -17,12 +17,12 @@
 #include <stdio.h>
 
 #define CSERIAL_STATIC
-#include <c_serial.h>
+#include <cserial/c_serial.h>
 
 /**
  */
 
-int _xmain( int argc, char** argv ){
+int main( int argc, char** argv ){
     c_serial_port_type* m_port;
     c_serial_control_lines_type m_lines;
     int status;

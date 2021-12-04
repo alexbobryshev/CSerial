@@ -5,7 +5,9 @@
 #include <string>
 #include <thread> // contains <chrono>
 
-#include "c_serial.h"
+#define CSERIAL_STATIC
+
+#include <cserial/c_serial.h>
 
 void println(const std::string& s = "") {
 	std::cout << s << std::endl;
@@ -319,6 +321,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (key == 10) {
+      // add \n to \r ?
 			//key = 13;
 			//int data_length = 1;
 			//status = c_serial_write_data(terminal_ctx.port, &key, &data_length);
@@ -331,6 +334,3 @@ int main(int argc, char* argv[]) {
 	}
 	return 0;
 }
-//int _zmain(int argc, char* argv[]) {
-//	return 0;
-//}
