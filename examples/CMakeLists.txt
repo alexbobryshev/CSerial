@@ -27,6 +27,12 @@ IF( WIN32 )
     INCLUDE_DIRECTORIES( ${C_SERIAL_INCLUDE_DIRECTORIES} ${CMAKE_CURRENT_BINARY_DIR} )
 ENDIF( WIN32 )
 
+add_executable( cserial-example example_full.c )
+target_link_libraries( cserial-example ${CSERIAL_LIBRARIES} )
+
+add_executable( simpleterm serial_simple_term.cpp )
+target_link_libraries( simpleterm ${CSERIAL_LIBRARIES} )
+
 if(THREADS_HAVE_PTHREAD_ARG)
   target_compile_options(cserial-example PUBLIC "-pthread")
   target_compile_options(simpleterm PUBLIC "-pthread")
@@ -35,9 +41,3 @@ if(CMAKE_THREAD_LIBS_INIT)
   target_link_libraries(cserial-example "${CMAKE_THREAD_LIBS_INIT}")
   target_link_libraries(simpleterm "${CMAKE_THREAD_LIBS_INIT}")
 endif()
-
-add_executable( cserial-example example_full.c )
-target_link_libraries( cserial-example ${CSERIAL_LIBRARIES} )
-
-add_executable( simpleterm serial_simple_term.cpp )
-target_link_libraries( simpleterm ${CSERIAL_LIBRARIES} )
