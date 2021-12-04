@@ -178,14 +178,14 @@ static void c_serial_init_serial_io(serial_io_type* io) {
 	memset(io, 0, sizeof(serial_io_type));
 }
 
-static int c_serial_set_serial_port_struct(c_serial_port_t* cserial_port, serial_io_type* io) {
+static int c_serial_set_serial_port_struct(c_serial_port_type* cserial_port, serial_io_type* io) {
 	if (tcsetattr(cserial_port->port, TCSANOW, io) < 0) {
 		return -1;
 	}
 	return 0;
 }
 
-static int c_serial_get_serial_port_struct(c_serial_port_t* cserial_port, serial_io_type* io) {
+static int c_serial_get_serial_port_struct(c_serial_port_type* cserial_port, serial_io_type* io) {
 	if (tcgetattr(cserial_port->port, io) < 0) {
 		return -1;
 	}
