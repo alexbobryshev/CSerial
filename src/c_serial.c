@@ -1127,8 +1127,8 @@ enum CSerial_Flow_Control c_serial_get_flow_control(
     return 0;
 }
 
-int c_serial_write_data( c_serial_port_type* port,
-                         void* data,
+int c_serial_write_data(c_serial_port_type* port,
+                         const void *data,
                          int* length ) {
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD bytes_written;
@@ -1257,7 +1257,7 @@ int c_serial_read_data_timeout(
 #ifdef CSERIAL_PLATFORM_WINDOWS
 	DWORD ret = 0;
 	int current_available = 0;
-	int bytes_got;
+  DWORD bytes_got;
   DWORD original_control_state;
 	int got_data = 0;
 	HANDLE wait_objects[2];
@@ -1322,7 +1322,6 @@ int c_serial_read_data_timeout(
 
 			SetCommMask(port->port, EV_RXCHAR | EV_CTS | EV_DSR | EV_RING);
 			if (!WaitCommEvent(port->port, &ret, &(port->read_overlap))) {
-				int asdf = 1;
 				DWORD last_error = GetLastError();
 				if (last_error == ERROR_IO_PENDING) {
 
@@ -1374,7 +1373,7 @@ int c_serial_read_data_timeout(
 	} while (1);
 
 	if (ret_code == CSERIAL_OK && lines != NULL) {
-		int modem_lines;
+    DWORD modem_lines;
 
 		if (GetCommModemStatus(port->port, &modem_lines) == 0) {
 			CSERIALDBG("Unable to get comm modem lines");
@@ -1476,6 +1475,10 @@ int c_serial_read_data_timeout(
 		if (FD_ISSET(port->port, &fdset) && data != NULL) {
 			break;
 		}
+
+    if (select_status == 0) {
+      continue;
+    }
 
 		if (lines != NULL && can_read_control_state) {
 			/* Our line state has changed - check to see if we should ignore the
@@ -1909,8 +1912,12 @@ const char* c_serial_get_error_string( int errnum ) {
         return "Invalid parameters to read from serial port";
     case CSERIAL_ERROR_CANT_CREATE:
         return "Unable to create serial port";
-	case CSERIAL_ERROR_TIMEOUT:
-		return "Timeout";
+    case CSERIAL_ERROR_TIMEOUT:
+        return "Timeout";
+    case CSERIAL_ERROR_CANCELLED:
+        return "Operation cancelled";
+    case CSERIAL_ERROR_NO_MEMORY:
+        return "No memory";
     default:
         return "Unknown error";
     }
